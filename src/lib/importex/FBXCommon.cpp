@@ -1,5 +1,6 @@
 #include "FBXCommon.h"
 
+
 #ifdef IOS_REF
 	#undef  IOS_REF
 	#define IOS_REF (*(pManager->GetIOSettings()))
@@ -42,10 +43,12 @@ void DestroySdkObjects(FbxManager* pManager, bool pExitStatus)
 	if( pExitStatus ) FBXSDK_printf("Program Success!\n");
 }
 
-bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const char* pFilename, int pFileFormat, bool pEmbedMedia)
+bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename, int pFileFormat, bool pEmbedMedia)
 {
     int lMajor, lMinor, lRevision;
     bool lStatus = true;
+
+    auto pFilename = Filename.toLocal8Bit().data();
 
     // Create an exporter.
     FbxExporter* lExporter = FbxExporter::Create(pManager, "");
@@ -103,7 +106,7 @@ bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const char* pFilename,
     return lStatus;
 }
 
-bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const char* pFilename)
+bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename)
 {
     int lFileMajor, lFileMinor, lFileRevision;
     int lSDKMajor,  lSDKMinor,  lSDKRevision;
@@ -111,6 +114,8 @@ bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const char* pFilename)
     int lAnimStackCount;
     bool lStatus;
     char lPassword[1024];
+
+    auto pFilename = Filename.toLocal8Bit().data();
 
     // Get the file version number generate by the FBX SDK.
     FbxManager::GetFileFormatVersion(lSDKMajor, lSDKMinor, lSDKRevision);

@@ -12,13 +12,14 @@
 #define _COMMON_H
 
 #include <fbxsdk.h>
+#include <QString>
 
 void InitializeSdkObjects(FbxManager*& pManager, FbxScene*& pScene);
 void DestroySdkObjects(FbxManager* pManager, bool pExitStatus);
 void CreateAndFillIOSettings(FbxManager* pManager);
 
-bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const char* pFilename, int pFileFormat=-1, bool pEmbedMedia=false);
-bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const char* pFilename);
+bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename, int pFileFormat=-1, bool pEmbedMedia=false);
+bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename);
 
 #endif // #ifndef _COMMON_H
 

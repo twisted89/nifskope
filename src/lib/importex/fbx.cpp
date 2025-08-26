@@ -35,7 +35,7 @@ QModelIndex FindSceneRoot(const NifModel * nif, const QModelIndex & iNode)
     return QModelIndex();
 }
 
-bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene)
+bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene, QString exportDir)
 {
     // create scene info
     FbxDocumentInfo* sceneInfo = FbxDocumentInfo::Create(pSdkManager,"SceneInfo");
@@ -51,16 +51,23 @@ bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene
     pScene->SetSceneInfo(sceneInfo);
 
     QList<int> roots;
-    QModelIndex iBlock = FindSceneRoot(nif, QModelIndex());
+    QModelIndex iRoot = FindSceneRoot(nif, QModelIndex());
 
-    if (!iBlock.isValid() ) {
+    if (!iRoot.isValid() ) {
         qCCritical( nsIo ) << "Failed to find scene root";
         return false;
     }
 
-    foreach ( int l, roots ) {
-        QModelIndex iBlock = nif->getBlock( l );
+    FbxNode* lRootNode = pScene->GetRootNode();
 
+    FbxSkeleton* lSkeletonRootAttribute = FbxSkeleton::Create(pScene, "Skeleton");
+    lSkeletonRootAttribute->SetSkeletonType(FbxSkeleton::eRoot);
+    FbxNode* lSkeletonRoot = FbxNode::Create(pScene, "Skeleton Root");
+    lSkeletonRoot->SetNodeAttribute(lSkeletonRootAttribute);
+    lSkeletonRoot->LclTranslation.Set(FbxVector4(0.0, -40.0, 0.0));
+
+    foreach ( const int l, nif->getChildLinks( nif->getBlockNumber( iRoot )) ) {
+        QModelIndex iBlock = nif->getBlock( l );
         if ( nif->inherits( iBlock, "NiNode" ) )
         {
             //FbxNode* lSkeletonRoot = CreateSkeleton(pScene, "Skeleton");
@@ -80,20 +87,28 @@ bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene
         }
     }
 
+    lRootNode->AddChild(lSkeletonRoot);
+
     return true;
 }
 
 void exportFBX( const NifModel * nif, const QModelIndex & index )
 {
+    Q_UNUSED(index);
     FbxManager* lSdkManager = NULL;
     FbxScene* lScene = NULL;
     bool lResult;
+
+    QString exportDir = QFileDialog::getExistingDirectory( qApp->activeWindow(), tr( "Choose a folder for export" ));
+
+    if ( exportDir.isEmpty() )
+        return;
 
     // Prepare the FBX SDK.
     InitializeSdkObjects(lSdkManager, lScene);
 
     // Create the scene.
-    lResult = CreateScene(nif, lSdkManager, lScene);
+    lResult = CreateScene(nif, lSdkManager, lScene, exportDir);
 
     if(lResult == false)
     {
@@ -103,15 +118,8 @@ void exportFBX( const NifModel * nif, const QModelIndex & index )
     }
 
     // Save the scene.
-    QSettings settings;
-    settings.beginGroup( "Import-Export" );
-    settings.beginGroup( "FBX" );
-    QString fname = QFileDialog::getSaveFileName( qApp->activeWindow(), tr( "Choose a .FBX file for export" ), settings.value( "File Name" ).toString(), "FBX (*.fbx)" );
-
-    if ( fname.isEmpty() )
-        return;
-
-    lResult = SaveScene(lSdkManager, lScene, fname.toUtf8().data());
+    QString exportFile = QString( "%1/%2.fbx" ).arg( exportDir ).arg( QFileInfo(nif->getFilename()).baseName() );
+    lResult = SaveScene(lSdkManager, lScene, exportDir);
 
     if(lResult == false)
     {
