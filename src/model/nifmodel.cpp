@@ -42,6 +42,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QDebug>
 #include <QFile>
 #include <QSettings>
+#include <QDebug>
 
 
 
@@ -1873,7 +1874,7 @@ bool NifModel::load( QIODevice & device )
 						//qDebug() << "loading block" << c << ":" << blktyp );
 						QModelIndex newBlock = insertNiBlock( blktyp, -1 );
 
-						if ( !loadItem( root->child( c + 1 ), stream ) ) {
+                        if ( !loadItem( root->child( c + 1 ), stream, false ) ) {
 							NifItem * child = root->child( c );
 							throw tr( "failed to load block number %1 (%2) previous block was %3" ).arg( c ).arg( blktyp ).arg( child ? child->name() : prevblktyp );
 						}
@@ -1938,18 +1939,19 @@ bool NifModel::load( QIODevice & device )
 			// read in the footer
 			// Disabling the throw because it hinders decoding when the XML is wrong,
 			// and prevents any data whatsoever from loading.
-			loadItem( getFooterItem(), stream );
+            loadItem( getFooterItem(), stream, false );
 			//if ( !loadItem( getFooterItem(), stream ) )
 			//	throw tr( "failed to load file footer" );
 		} else {
 			// versions below 3.3.0.13
 			QMap<qint32, qint32> linkMap;
 
+            bool loggingEnabled = false;
 			try {
 				for ( qint32 c = 0; true; c++ ) {
 					emit sigProgress( c + 1, 0 );
 
-					if ( device.atEnd() )
+                    if ( device.atEnd() )
 						throw tr( "unexpected EOF during load" );
 
 					int len;
@@ -1962,7 +1964,11 @@ bool NifModel::load( QIODevice & device )
 
 					if ( blktyp == "End Of File" ) {
 						break;
-					} else if ( blktyp == "Top Level Object" ) {
+                    }
+                    //else if (blktyp == "Ni3dsSkin") {
+                    //    loggingEnabled = true;
+                    //}
+                    else if ( blktyp == "Top Level Object" ) {
 						device.read( (char *)&len, 4 );
 
 						if ( len < 0 || len > 80 )
@@ -1973,16 +1979,19 @@ bool NifModel::load( QIODevice & device )
 
 					qint32 p;
 					device.read( (char *)&p, 4 );
-					p -= 1;
+                    p -= 1;
 
+                    qDebug() << "Reading block " << blktyp << " at " << device.pos();
+
+                    //if(device.pos() == 1269068)
+                    //    __debugbreak();
 					if ( p != c )
-						linkMap.insert( p, c );
+                        linkMap.insert( p, c );
 
 					if ( isNiBlock( blktyp ) ) {
-						//qDebug() << "loading block" << c << ":" << blktyp );
-						insertNiBlock( blktyp, -1 );
+                        insertNiBlock( blktyp, -1 );
 
-						if ( !loadItem( root->child( c + 1 ), stream ) )
+                        if ( !loadItem( root->child( c + 1 ), stream, loggingEnabled ) )
 							throw tr( "failed to load block number %1 (%2) previous block was %3" ).arg( c ).arg( blktyp ).arg( root->child( c )->name() );
 					} else {
 						throw tr( "encountered unknown block (%1)" ).arg( blktyp );
@@ -2088,7 +2097,7 @@ bool NifModel::loadIndex( QIODevice & device, const QModelIndex & index )
 
 	if ( item && index.isValid() && index.model() == this ) {
 		NifIStream stream( this, &device );
-		bool ok = loadItem( item, stream );
+        bool ok = loadItem( item, stream, false );
 		updateLinks();
 		updateFooter();
 		emit linksChanged();
@@ -2105,7 +2114,7 @@ bool NifModel::loadAndMapLinks( QIODevice & device, const QModelIndex & index, c
 
 	if ( item && index.isValid() && index.model() == this ) {
 		NifIStream stream( this, &device );
-		bool ok = loadItem( item, stream );
+        bool ok = loadItem( item, stream, false );
 		mapLinks( item, map );
 		updateLinks();
 		updateFooter();
@@ -2277,26 +2286,30 @@ int NifModel::blockSize( NifItem * parent, NifSStream & stream ) const
 	return size;
 }
 
-bool NifModel::loadItem( NifItem * parent, NifIStream & stream )
+bool NifModel::loadItem( NifItem * parent, NifIStream & stream, bool loggingEnabled)
 {
 	if ( !parent )
 		return false;
 
 	for ( auto child : parent->children() ) {
+
+        if(loggingEnabled)
+            qDebug() << "Reading " << child->name() << " at " << stream.pos();
+
 		if ( !child->isConditionless() )
 			child->invalidateCondition();
 
 		if ( child->isAbstract() ) {
-			//qDebug() << "Not loading abstract item " << child->name();
+            qDebug() << "Not loading abstract item " << child->name();
 			continue;
 		}
 
 		if ( evalCondition( child ) ) {
 			if ( isArray( child ) ) {
-				if ( !updateArrayItem( child ) || !loadItem( child, stream ) )
+                if ( !updateArrayItem( child ) || !loadItem( child, stream, loggingEnabled ) )
 					return false;
 			} else if ( child->childCount() > 0 ) {
-				if ( !loadItem( child, stream ) )
+                if ( !loadItem( child, stream, loggingEnabled ) )
 					return false;
 			} else {
 				if ( !stream.read( child->value() ) )
@@ -2320,7 +2333,7 @@ bool NifModel::loadHeader( NifItem * header, NifIStream & stream )
 
 	invalidateConditions( header, false );
 	
-	return loadItem( header, stream );
+    return loadItem( header, stream, false );
 }
 
 bool NifModel::saveItem( NifItem * parent, NifOStream & stream ) const

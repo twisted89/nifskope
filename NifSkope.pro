@@ -7,6 +7,9 @@ TARGET   = NifSkope
 
 QT += xml opengl network widgets
 
+# Use explicit paths
+QMAKE_PROJECT_DEPTH = 0
+
 # Require Qt 5.7 or higher
 contains(QT_VERSION, ^5\\.[0-6]\\..*) {
 	message("Cannot build NifSkope with Qt version $${QT_VERSION}")
@@ -135,7 +138,7 @@ include(NifSkope_targets.pri)
 ## PROJECT SCOPES
 ###############################
 
-INCLUDEPATH += src lib
+INCLUDEPATH += src lib "C:/Program Files/Autodesk/FBX/FBX SDK/2020.3.7/include"
 
 HEADERS += \
 	src/data/nifitem.h \
@@ -223,6 +226,8 @@ SOURCES += \
 	src/io/material.cpp \
 	src/io/nifstream.cpp \
 	src/lib/importex/3ds.cpp \
+	src/lib/importex/fbx.cpp \
+	src/lib/importex/FBXCommon.cpp \
 	src/lib/importex/importex.cpp \
 	src/lib/importex/obj.cpp \
 	src/lib/importex/col.cpp \
@@ -439,7 +444,7 @@ win32 {
 
 win32 {
     # GL libs for Qt 5.5+
-    LIBS += -lopengl32 -lglu32
+    LIBS += -lopengl32 -lglu32 "-lC:/Program Files/Autodesk/FBX/FBX SDK/2020.3.7/lib/x64/debug/libfbxsdk"
 }
 
 unix:!macx {
@@ -478,15 +483,15 @@ win32:contains(QT_ARCH, i386) {
 	copyFiles( $$DEP )
 }
 
-	XML += \
-		build/docsys/nifxml/nif.xml \
-		build/docsys/kfmxml/kfm.xml
+        #XML += \
+	#	build/docsys/nifxml/nif.xml \
+	#	build/docsys/kfmxml/kfm.xml
 
 	QSS += \
 		res/style.qss
 
-	#LANG += \
-	#	res/lang
+        LANG += \
+	        res/lang
 
 	SHADERS += \
 		res/shaders
@@ -497,7 +502,7 @@ win32:contains(QT_ARCH, i386) {
 		README.md
 
 	copyDirs( $$SHADERS, shaders )
-	#copyDirs( $$LANG, lang )
+	copyDirs( $$LANG, lang )
 	copyFiles( $$XML $$QSS )
 
 	# Copy Readmes and rename to TXT

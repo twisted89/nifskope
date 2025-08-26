@@ -157,7 +157,7 @@ public:
 	virtual bool updateTransform( Transform & tm, float time );
 
 protected:
-	QPersistentModelIndex iTranslations, iRotations, iScales;
+    QPersistentModelIndex iTranslations, iRotations, iScales, iVisibilities;
 	int lTrans, lRotate, lScale;
 };
 

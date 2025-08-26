@@ -81,11 +81,11 @@ protected:
 	QPersistentModelIndex iData;
 	//! Does the data need updating?
 	bool updateData = false;
-	//! Was Skinning enabled last update?
+    //! Was Skinning enabled last update?
 	bool doSkinning = false;
 
 	//! Skin instance
-	QPersistentModelIndex iSkin;
+    QPersistentModelIndex iSkin;
 	//! Skin data
 	QPersistentModelIndex iSkinData;
 	//! Skin partition

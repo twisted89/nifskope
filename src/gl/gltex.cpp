@@ -411,7 +411,8 @@ int TexCache::bind( const QModelIndex & iSource )
 	if ( nif && iSource.isValid() ) {
 		if ( nif->get<quint8>( iSource, "Use External" ) == 0 ) {
 			QModelIndex iData = nif->getBlock( nif->getLink( iSource, "Pixel Data" ) );
-
+            if( !iData.isValid() )
+                iData = nif->getBlock( nif->getLink( iSource, "Image Data" ) );
 			if ( iData.isValid() ) {
 				Tex * tx = embedTextures.value( iData );
 

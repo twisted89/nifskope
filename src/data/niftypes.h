@@ -1065,6 +1065,16 @@ public:
 		return rotation * v * scale + translation;
 	}
 
+    //! Plus equals operator
+    Transform operator+=( const Vector3 & v )
+    {
+        Transform t;
+        t.rotation = rotation;
+        t.translation = translation + v;
+        t.scale = scale;
+        return t;
+    }
+
 	//! Returns a matrix holding the transform
 	Matrix4 toMatrix4() const;
 

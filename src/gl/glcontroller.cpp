@@ -116,6 +116,11 @@ void IControllable::update( const NifModel * nif, const QModelIndex & i )
 			x = true;
 	}
 
+    if(nif->getVersionNumber() == 0x02030000) //No links exist so just return
+    {
+        return;
+    }
+
 	if ( iBlock == i || x ) {
 		name = nif->get<QString>( iBlock, "Name" );
 		// sync the list of attached controllers
@@ -147,7 +152,7 @@ void IControllable::update( const NifModel * nif, const QModelIndex & i )
 
 void IControllable::transform()
 {
-	if ( scene->animate ) {
+    if ( scene->animate ) {
 		for ( Controller * controller : controllers ) {
 			controller->updateTime( scene->time );
 		}
@@ -207,40 +212,41 @@ void Controller::setInterpolator( const QModelIndex & index )
 
 	if ( nif )
 		iData = nif->getBlock( nif->getLink( iInterpolator, "Data" ) );
+
 }
 
 bool Controller::update( const NifModel * nif, const QModelIndex & index )
 {
 	if ( iBlock.isValid() && iBlock == index ) {
-		start = nif->get<float>( index, "Start Time" );
-		stop  = nif->get<float>( index, "Stop Time" );
-		phase = nif->get<float>( index, "Phase" );
-		frequency = nif->get<float>( index, "Frequency" );
+        start = nif->get<float>( index, "Start Time" );
+        stop  = nif->get<float>( index, "Stop Time" );
+        phase = nif->get<float>( index, "Phase" );
+        frequency = nif->get<float>( index, "Frequency" );
 
-		int flags = nif->get<int>( index, "Flags" );
-		active = flags & 0x08;
-		extrapolation = (Extrapolation)( ( flags & 0x06 ) >> 1 );
+        int flags = nif->get<int>( index, "Flags" );
+        active = flags & 0x08;
+        extrapolation = (Extrapolation)( ( flags & 0x06 ) >> 1 );
 
-		// TODO: Bit 4 (16) - Plays entire animation backwards.
-		// TODO: Bit 5 (32) - Generally only set when sequences are present.
-		// TODO: Bit 6 (64) - Always seems to be set on Skyrim NIFs, unknown function.
+        // TODO: Bit 4 (16) - Plays entire animation backwards.
+        // TODO: Bit 5 (32) - Generally only set when sequences are present.
+        // TODO: Bit 6 (64) - Always seems to be set on Skyrim NIFs, unknown function.
 
-		QModelIndex idx = nif->getBlock( nif->getLink( iBlock, "Interpolator" ) );
+        QModelIndex idx = nif->getBlock( nif->getLink( iBlock, "Interpolator" ) );
 
-		if ( idx.isValid() ) {
-			setInterpolator( idx );
-		} else {
-			idx = nif->getBlock( nif->getLink( iBlock, "Data" ) );
+        if ( idx.isValid() ) {
+            setInterpolator( idx );
+        } else {
+            idx = nif->getBlock( nif->getLink( iBlock, "Data" ) );
 
-			if ( idx.isValid() )
-				iData = idx;
-		}
-	}
+            if ( idx.isValid() )
+                iData = idx;
+        }
+    }
 
-	if ( iInterpolator.isValid() && ( iInterpolator == index ) )
-		iData = nif->getBlock( nif->getLink( iInterpolator, "Data" ) );
+    if ( iInterpolator.isValid() && ( iInterpolator == index ) )
+        iData = nif->getBlock( nif->getLink( iInterpolator, "Data" ) );
 
-	return ( index.isValid() && ( ( index == iBlock ) || ( index == iInterpolator ) || ( index == iData ) ) );
+    return ( index.isValid() && ( ( index == iBlock ) || ( index == iInterpolator ) || ( index == iData ) ) );
 }
 
 float Controller::ctrlTime( float time ) const
@@ -374,9 +380,9 @@ template <typename T> bool interpolate( T & value, const QModelIndex & array, fl
 		int next;
 		float x;
 
-		if ( Controller::timeIndex( time, nif, frames, last, next, x ) ) {
-			T v1 = nif->get<T>( frames.child( last, 0 ), "Value" );
-			T v2 = nif->get<T>( frames.child( next, 0 ), "Value" );
+        if ( Controller::timeIndex( time, nif, frames, last, next, x ) ) {
+            T v1 = nif->get<T>( frames.child( last, 0 ), "Value" );
+            T v2 = nif->get<T>( frames.child( next, 0 ), "Value" );
 
 			switch ( nif->get<int>( array, "Interpolation" ) ) {
 			
@@ -390,9 +396,9 @@ template <typename T> bool interpolate( T & value, const QModelIndex & array, fl
 				*/
 
 				// Tangent 1
-				float t1 = nif->get<float>( frames.child( last, 0 ), "Backward" );
+                float t1 = nif->get<float>( frames.child( last, 0 ), "Backward" );
 				// Tangent 2
-				float t2 = nif->get<float>( frames.child( next, 0 ), "Forward" );
+                float t2 = nif->get<float>( frames.child( next, 0 ), "Forward" );
 
 				float x2 = x * x;
 				float x3 = x2 * x;
@@ -465,57 +471,59 @@ template <> bool Controller::interpolate( Matrix & value, const QModelIndex & ar
 {
 	int next;
 	float x;
-	const NifModel * nif = static_cast<const NifModel *>( array.model() );
 
-	if ( nif && array.isValid() ) {
-		switch ( nif->get<int>( array, "Rotation Type" ) ) {
-		case 4:
-			{
-				QModelIndex subkeys = nif->getIndex( array, "XYZ Rotations" );
+    const NifModel * nif = static_cast<const NifModel *>( array.model() );
 
-				if ( subkeys.isValid() ) {
-					float r[3] = {};
+    if ( nif && array.isValid() ) {
 
-					for ( int s = 0; s < 3 && s < nif->rowCount( subkeys ); s++ ) {
-						r[s] = 0;
-						interpolate( r[s], subkeys.child( s, 0 ), time, last );
-					}
+        switch ( nif->get<int>( array, "Rotation Type" ) ) {
+        case 4:
+            {
+                QModelIndex subkeys = nif->getIndex( array, "XYZ Rotations" );
 
-					value = Matrix::euler( 0, 0, r[2] ) * Matrix::euler( 0, r[1], 0 ) * Matrix::euler( r[0], 0, 0 );
+                if ( subkeys.isValid() ) {
+                    float r[3] = {};
 
-					return true;
-				}
-			}
-			break;
-		default:
-			{
-				QModelIndex frames = nif->getIndex( array, "Quaternion Keys" );
+                    for ( int s = 0; s < 3 && s < nif->rowCount( subkeys ); s++ ) {
+                        r[s] = 0;
+                        interpolate( r[s], subkeys.child( s, 0 ), time, last );
+                    }
 
-				if ( timeIndex( time, nif, frames, last, next, x ) ) {
-					Quat v1 = nif->get<Quat>( frames.child( last, 0 ), "Value" );
-					Quat v2 = nif->get<Quat>( frames.child( next, 0 ), "Value" );
+                    value = Matrix::euler( 0, 0, r[2] ) * Matrix::euler( 0, r[1], 0 ) * Matrix::euler( r[0], 0, 0 );
 
-					if ( Quat::dotproduct( v1, v2 ) < 0 )
-						v1.negate(); // don't take the long path
+                    return true;
+                }
+            }
+            break;
+        default:
+            {
+                QModelIndex frames = nif->getIndex( array, "Quaternion Keys" );
+                if ( timeIndex( time, nif, frames, last, next, x ) ) {
+                    Quat v1 = nif->get<Quat>( frames.child( last, 0 ), "Value" );
+                    Quat v2 = nif->get<Quat>( frames.child( next, 0 ), "Value" );
 
-					Quat v3 = Quat::slerp( x, v1, v2 );
-					/*
-					Quat v4;
-					float a = acos( Quat::dotproduct( v1, v2 ) );
-					if ( fabs( a ) >= 0.00005 )
-					{
-					    float i = 1.0 / sin( a );
-					    v4 = v1 * sin( ( 1.0 - x ) * a ) * i + v2 * sin( x * a ) * i;
-					}
-					*/
-					value.fromQuat( v3 );
+                    if ( Quat::dotproduct( v1, v2 ) < 0 )
+                        v1.negate(); // don't take the long path
 
-					return true;
-				}
-			}
-			break;
-		}
-	}
+                    Quat v3 = Quat::slerp( x, v1, v2 );
+                    /*
+                    Quat v4;
+                    float a = acos( Quat::dotproduct( v1, v2 ) );
+                    if ( fabs( a ) >= 0.00005 )
+                    {
+                        float i = 1.0 / sin( a );
+                        v4 = v1 * sin( ( 1.0 - x ) * a ) * i + v2 * sin( x * a ) * i;
+                    }
+                    */
+                    value.fromQuat( v3 );
+
+                    return true;
+                }
+            }
+            break;
+        }
+
+    }
 
 	return false;
 }
@@ -715,16 +723,27 @@ TransformInterpolator::TransformInterpolator( Controller * owner )
 bool TransformInterpolator::update( const NifModel * nif, const QModelIndex & index )
 {
 	if ( Interpolator::update( nif, index ) ) {
-		QModelIndex iData = nif->getBlock( nif->getLink( index, "Data" ), "NiTransformData" );
-		iTranslations = nif->getIndex( iData, "Translations" );
-		iRotations = nif->getIndex( iData, "Rotations" );
 
-		if ( !iRotations.isValid() )
-			iRotations = iData;
+        if(nif->getVersionNumber() == 0x02030000)
+        {
+            iTranslations = nif->getIndex( index, "Translations" );
+            iRotations = nif->getIndex( index, "Rotations" );
+            iScales = nif->getIndex( index, "Scales" );
+            iVisibilities = nif->getIndex( index, "Visibilities" );
+            return true;
+        }
+        else {
 
-		iScales = nif->getIndex( iData, "Scales" );
+            QModelIndex iData = nif->getBlock( nif->getLink( index, "Data" ), "NiTransformData" );
+            iTranslations = nif->getIndex( iData, "Translations" );
+            iRotations = nif->getIndex( iData, "Rotations" );
 
-		return true;
+            if ( !iRotations.isValid() )
+                iRotations = iData;
+
+            iScales = nif->getIndex( iData, "Scales" );
+            return true;
+        }
 	}
 
 	return false;
@@ -732,9 +751,12 @@ bool TransformInterpolator::update( const NifModel * nif, const QModelIndex & in
 
 bool TransformInterpolator::updateTransform( Transform & tm, float time )
 {
-	Controller::interpolate( tm.rotation, iRotations, time, lRotate );
-	Controller::interpolate( tm.translation, iTranslations, time, lTrans );
-	Controller::interpolate( tm.scale, iScales, time, lScale );
+    //const NifModel * nif = static_cast<const NifModel *>( iRotations.model() );
+    //if(nif && nif->getBlockNumber(iRotations) == 319)
+    //    __debugbreak();
+    Controller::interpolate( tm.rotation, iRotations, time, lRotate );
+    Controller::interpolate( tm.translation, iTranslations, time, lTrans );
+    Controller::interpolate( tm.scale, iScales, time, lScale );
 
 	return true;
 }

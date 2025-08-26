@@ -479,6 +479,11 @@ bool NifIStream::read( NifValue & val )
 	return false;
 }
 
+qint64 NifIStream::pos() const
+{
+    return device->pos();
+}
+
 
 /*
 *  NifOStream

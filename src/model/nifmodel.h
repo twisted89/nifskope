@@ -329,7 +329,7 @@ protected:
 
 	// end BaseModel
 
-	bool loadItem( NifItem * parent, NifIStream & stream );
+    bool loadItem( NifItem * parent, NifIStream & stream, bool loggingEnabled);
 	bool loadHeader( NifItem * parent, NifIStream & stream );
 	bool saveItem( NifItem * parent, NifOStream & stream ) const;
 	bool fileOffset( NifItem * parent, NifItem * target, NifSStream & stream, int & ofs ) const;

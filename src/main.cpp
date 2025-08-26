@@ -66,6 +66,12 @@ QCoreApplication * createApplication( int &argc, char *argv[] )
 //! The main program
 int main( int argc, char * argv[] )
 {
+#ifdef QT_DEBUG
+    qputenv("QT_FATAL_WARNINGS", "1");
+    qputenv("QT_MESSAGE_PATTERN",
+            "Type: %{type}\nProduct Name: %{appname}\nFile: %{file}\nLine: %{line}\nMethod: %{function}\nThreadID: %{threadid}\nThreadPtr: %{qthreadptr}\nMessage: %{message}");
+#endif
+
 	QScopedPointer<QCoreApplication> app( createApplication( argc, argv ) );
 
 	if ( auto a = qobject_cast<QApplication *>(app.data()) ) {

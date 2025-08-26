@@ -2049,3 +2049,30 @@ const Transform & BillboardNode::viewTrans() const
 	scene->viewTrans.insert( nodeId, t );
 	return scene->viewTrans[ nodeId ];
 }
+
+AnimationNode::AnimationNode(Scene *scene, const QModelIndex &block)
+    : Node( scene, block )
+{
+    const NifModel * nif = static_cast<const NifModel *>(iBlock.model());
+    if(nif)
+    {
+        Controller * ctrl = new AnimationController( this, block );
+        ctrl->update( nif, block );
+        controllers.append( ctrl );
+    }
+}
+
+void AnimationNode::clear()
+{
+    Node::clear();
+}
+
+void AnimationNode::update( const NifModel * nif, const QModelIndex & index )
+{
+    Node::update( nif, index );
+}
+
+void AnimationNode::transform()
+{
+    Node::transform();
+}

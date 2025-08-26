@@ -412,10 +412,6 @@ padding-bottom: 2px;
 margin-top: -2px;
 }
 
-#statusbar QSizeGrip {
-background: url(&quot;:/img/sizeGrip&quot;) no-repeat;
-width: 10px; height: 10px;
-}
 
 #statusbar::text {
 padding: 0 0 10px 0;

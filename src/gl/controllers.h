@@ -60,6 +60,25 @@ protected:
 	QPointer<Node> target;
 };
 
+//! Controller for `Ni3dsAnimationNode` blocks
+class AnimationController final : public Controller
+{
+public:
+    AnimationController( Node * node, const QModelIndex & index );
+
+    void updateTime( float time ) override final;
+    void setInterpolator( const QModelIndex & idx ) override final;
+    bool update( const NifModel * nif, const QModelIndex & index ) override final;
+
+protected:
+    QPointer<Node> target;
+    QPointer<TransformInterpolator> interpolator;
+
+    int lTrans, lRotate, lScale;
+    float hiKeyTime, lowKeyTime;
+
+};
+
 
 //! Controller for `NiKeyframeController` blocks
 class KeyframeController final : public Controller

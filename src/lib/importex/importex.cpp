@@ -41,6 +41,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QModelIndex>
 
 
+void exportFBX( const NifModel * nif, const QModelIndex & index );
 void exportObj( const NifModel * nif, const QModelIndex & index );
 void exportCol( const NifModel * nif, QFileInfo );
 void importObj( NifModel * nif, const QModelIndex & index );
@@ -49,7 +50,7 @@ void import3ds( NifModel * nif, const QModelIndex & index );
 
 void NifSkope::fillImportExportMenus()
 {
-	mExport->addAction( tr( "Export .OBJ" ) );
+    mExport->addAction( tr( "Export .FBX" ) );
 	//mExport->addAction( tr( "Export .DAE" ) );
 	//mImport->addAction( tr( "Import .3DS" ) );
 	mImport->addAction( tr( "Import .OBJ" ) );
@@ -88,8 +89,8 @@ void NifSkope::sltImportExport( QAction * a )
 		mExport->setDisabled( false );
 	}
 
-	if ( a->text() == tr( "Export .OBJ" ) )
-		exportObj( nif, index );
+    if ( a->text() == tr( "Export .FBX" ) )
+        exportFBX( nif, index );
 	else if ( a->text() == tr( "Import .OBJ" ) )
 		importObj( nif, index );
 	//else if ( a->text() == tr( "Import .3DS" ) )

@@ -442,7 +442,11 @@ public:
 
 		settings.setValue( key, chkNormals->isChecked() );
 
-		QModelIndex iData = nif->getBlock( nif->getLink( nif->getBlock( index ), "Data" ), "NiGeometryData" );
+        QModelIndex iData;
+        if(nif->getVersionNumber() == 0x02030000)
+            iData = nif->getBlock( index );
+        else
+            iData = nif->getBlock( nif->getLink( nif->getBlock( index ), "Data" ), "NiGeometryData" );
 
 		QVector<Vector3> vertices = nif->getArray<Vector3>( iData, "Vertices" );
 		QMutableVectorIterator<Vector3> it( vertices );

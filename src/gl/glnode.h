@@ -77,11 +77,13 @@ class Node : public IControllable
 {
 	friend class ControllerManager;
 	friend class KeyframeController;
+    friend class AnimationController;
 	friend class MultiTargetTransformController;
 	friend class TransformController;
 	friend class VisibilityController;
 	friend class NodeList;
 	friend class LODNode;
+    friend class AnimationNode;
 
 	typedef union
 	{
@@ -217,6 +219,18 @@ public:
 	BillboardNode( Scene * scene, const QModelIndex & block );
 
 	const Transform & viewTrans() const override;
+};
+
+
+//! A Node that contains animations
+class AnimationNode : public Node
+{
+public:
+    AnimationNode( Scene * scene, const QModelIndex & block );
+
+    void clear() override;
+    void update( const NifModel * nif, const QModelIndex & block ) override;
+    void transform() override;
 };
 
 

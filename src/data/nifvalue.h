@@ -93,13 +93,13 @@ public:
 		tUInt           = 10,
 		//
 		tLink   = 11,
-		tUpLink = 12,
-		tFloat  = 13,
+        tUpLink = 12,
+        tFloat  = 13,
 		// all string types should come between tSizedString and tChar8String
-		tSizedString   = 14,
-		tText          = 15,
-		tShortString   = 16,
-		tHeaderString  = 18,
+        tSizedString   = 14,
+        tText          = 15,
+        tShortString   = 16,
+        tHeaderString  = 18,
 		tLineString    = 19,
 		tChar8String   = 20,
 		//

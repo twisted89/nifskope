@@ -1231,8 +1231,17 @@ public:
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
 		// also check NiTextureProperty?
-		QModelIndex block = nif->getBlock( index, "NiTexturingProperty" );
-		return block.isValid();
+        if(nif->getBlock( index, "NiTexturingProperty" ).isValid())
+            return true;
+
+        auto tp = nif->getBlock( index, "NiTextureProperty" );
+        if(tp.isValid())
+        {
+            auto textureFlipper = nif->getBlock( nif->getParent( nif->getBlockNumber( tp ) ), "NiFlipTextures");
+            return textureFlipper.isValid();
+        }
+
+        return false;
 	}
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final

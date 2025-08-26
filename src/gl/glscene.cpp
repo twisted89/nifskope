@@ -240,11 +240,13 @@ Node * Scene::getNode( const NifModel * nif, const QModelIndex & iNode )
 			node = new LODNode( this, iNode );
 		else if ( nif->itemName( iNode ) == "NiBillboardNode" )
 			node = new BillboardNode( this, iNode );
+        else if ( nif->itemName( iNode ) == "Ni3dsAnimationNode" || nif->itemName( iNode ) == "Ni3dsBone" )
+            node = new AnimationNode( this, iNode );
 		else
 			node = new Node( this, iNode );
 	} else if ( nif->itemName( iNode ) == "NiTriShape"
 				|| nif->itemName( iNode ) == "NiTriStrips"
-				|| nif->inherits( iNode, "NiTriBasedGeom" ) )
+                || nif->inherits( iNode, "NiTriBasedGeom") )
 	{
 		node = new Mesh( this, iNode );
 		shapes += static_cast<Shape *>(node);
@@ -472,7 +474,7 @@ int Scene::bindTexture( const QString & fname )
 
 int Scene::bindTexture( const QModelIndex & iSource )
 {
-	if ( !(options & DoTexturing) || !iSource.isValid() )
+    if ( !iSource.isValid() )
 		return 0;
 
 	return textures->bind( iSource );

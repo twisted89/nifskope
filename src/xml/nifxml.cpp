@@ -280,7 +280,7 @@ public:
 					QString userver = list.value( "userver" );
 					QString userver2 = list.value( "userver2" );
 
-					bool isTemplated = (type == "TEMPLATE" || tmpl == "TEMPLATE");
+                    bool isTemplated = (type == "TEMPLATE" || type == "Instance" || tmpl == "TEMPLATE");
 					bool isCompound = NifModel::compounds.contains( type );
 					bool isArray = !arr1.isEmpty();
 					bool isMultiArray = !arr2.isEmpty();
