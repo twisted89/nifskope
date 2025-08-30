@@ -477,15 +477,16 @@ build_pass|!debug_and_release {
 ## QMAKE_POST_LINK
 ###############################
 
+XML += \
+        dep/nif.xml \
+	dep/kfm.xml
+copyFiles( $$XML )
+
 win32:contains(QT_ARCH, i386) {
 	DEP += \
-		dep/NifMopp.dll
+	        dep/NifMopp.dll
 	copyFiles( $$DEP )
 }
-
-        #XML += \
-	#	build/docsys/nifxml/nif.xml \
-	#	build/docsys/kfmxml/kfm.xml
 
 	QSS += \
 		res/style.qss
@@ -503,7 +504,7 @@ win32:contains(QT_ARCH, i386) {
 
 	copyDirs( $$SHADERS, shaders )
 	copyDirs( $$LANG, lang )
-	copyFiles( $$XML $$QSS )
+	copyFiles( $$QSS )
 
 	# Copy Readmes and rename to TXT
 	copyFiles( $$READMES,,,, md:txt )
