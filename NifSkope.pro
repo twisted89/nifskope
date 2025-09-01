@@ -138,7 +138,7 @@ include(NifSkope_targets.pri)
 ## PROJECT SCOPES
 ###############################
 
-INCLUDEPATH += src lib "C:/Program Files/Autodesk/FBX/FBX SDK/2020.3.7/include"
+INCLUDEPATH += src lib lib/fbx lib/eigen/
 
 HEADERS += \
 	src/data/nifitem.h \
@@ -444,7 +444,7 @@ win32 {
 
 win32 {
     # GL libs for Qt 5.5+
-    LIBS += -lopengl32 -lglu32 "-lC:/Program Files/Autodesk/FBX/FBX SDK/2020.3.7/lib/x64/debug/libfbxsdk"
+    LIBS += -lopengl32 -lglu32 -lAdvapi32 -l$$PWD/lib/fbx/libfbxsdk
 }
 
 unix:!macx {
@@ -480,7 +480,10 @@ build_pass|!debug_and_release {
 XML += \
         dep/nif.xml \
 	dep/kfm.xml
-copyFiles( $$XML )
+
+EXPORT_DLL += \
+        dep/libfbxsdk.dll
+copyFiles( $$XML $$EXPORT_DLL )
 
 win32:contains(QT_ARCH, i386) {
 	DEP += \

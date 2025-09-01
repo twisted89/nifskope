@@ -31,11 +31,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ***** END LICENCE BLOCK *****/
 
 #include "niftypes.h"
-
 #include "model/nifmodel.h"
-
 #include <QStringList>
-
 
 //! @file niftypes.cpp Type functions
 
@@ -256,6 +253,51 @@ bool Matrix::toEuler( float & x, float & y, float & z ) const
 	}
 }
 
+Eigen::Vector3d Matrix::toEulerXYZ()
+{
+    // Build matrix from 2d array
+    Eigen::Matrix3d R_rh = Eigen::Matrix3d::Zero();
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            R_rh(i, j) = static_cast<double>(m[i][j]);
+        }
+    }
+
+    // Convert from Z-up to Y-up
+    Eigen::Matrix3d coord_transform_lh;
+    coord_transform_lh <<
+        1,  0,  0,
+        0,  0,  1,
+        0, -1,  0;
+
+    Eigen::Matrix3d R_lh = coord_transform_lh * R_rh * coord_transform_lh.transpose();
+
+    //Extract Euler angles
+    // Extract Y rotation (pitch) - same formula works for LH
+    double sinY = -R_lh(2, 0);
+
+    // Clamp to avoid numerical issues
+    sinY = std::max(-1.0, std::min(1.0, sinY));
+
+    double x, y, z;
+    // Check for gimbal lock
+    if (std::abs(sinY) >= 0.99999) {
+        // Gimbal lock case
+        y = std::asin(sinY);
+
+        // Set Z to 0 and solve for X
+        z = 0;
+        x = std::atan2(-R_lh(0, 1), R_lh(1, 1));
+    } else {
+        // Normal case
+        y = std::asin(sinY);
+        x = std::atan2(R_lh(2, 1), R_lh(2, 2));
+        z = std::atan2(R_lh(1, 0), R_lh(0, 0));
+    }
+
+    return Eigen::Vector3d(x, y, z);
+}
+
 
 Matrix Matrix::inverted () const
 {
@@ -283,6 +325,17 @@ Matrix Matrix::inverted () const
 
 
 	return i;
+}
+
+Matrix Matrix::tranpose () const
+{
+    Matrix temp;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            temp(j, i) = m[i][j];
+        }
+    }
+    return temp;
 }
 
 QString Matrix::toHtml() const

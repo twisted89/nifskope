@@ -18,8 +18,8 @@ void InitializeSdkObjects(FbxManager*& pManager, FbxScene*& pScene);
 void DestroySdkObjects(FbxManager* pManager, bool pExitStatus);
 void CreateAndFillIOSettings(FbxManager* pManager);
 
-bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename, int pFileFormat=-1, bool pEmbedMedia=false);
-bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename);
+bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const std::string& Filename, int pFileFormat=-1, bool pEmbedMedia=false);
+bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const std::string& Filename);
 
 #endif // #ifndef _COMMON_H
 

@@ -43,12 +43,10 @@ void DestroySdkObjects(FbxManager* pManager, bool pExitStatus)
 	if( pExitStatus ) FBXSDK_printf("Program Success!\n");
 }
 
-bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename, int pFileFormat, bool pEmbedMedia)
+bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const std::string& Filename, int pFileFormat, bool pEmbedMedia)
 {
     int lMajor, lMinor, lRevision;
     bool lStatus = true;
-
-    auto pFilename = Filename.toLocal8Bit().data();
 
     // Create an exporter.
     FbxExporter* lExporter = FbxExporter::Create(pManager, "");
@@ -88,7 +86,7 @@ bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filenam
     IOS_REF.SetBoolProp(EXP_FBX_GLOBAL_SETTINGS, true);
 
     // Initialize the exporter by providing a filename.
-    if(lExporter->Initialize(pFilename, pFileFormat, pManager->GetIOSettings()) == false)
+    if(lExporter->Initialize(Filename.c_str(), pFileFormat, pManager->GetIOSettings()) == false)
     {
         FBXSDK_printf("Call to FbxExporter::Initialize() failed.\n");
         FBXSDK_printf("Error returned: %s\n\n", lExporter->GetStatus().GetErrorString());
@@ -106,7 +104,7 @@ bool SaveScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filenam
     return lStatus;
 }
 
-bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filename)
+bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const std::string& Filename)
 {
     int lFileMajor, lFileMinor, lFileRevision;
     int lSDKMajor,  lSDKMinor,  lSDKRevision;
@@ -115,8 +113,6 @@ bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filenam
     bool lStatus;
     char lPassword[1024];
 
-    auto pFilename = Filename.toLocal8Bit().data();
-
     // Get the file version number generate by the FBX SDK.
     FbxManager::GetFileFormatVersion(lSDKMajor, lSDKMinor, lSDKRevision);
 
@@ -124,7 +120,7 @@ bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filenam
     FbxImporter* lImporter = FbxImporter::Create(pManager,"");
 
     // Initialize the importer by providing a filename.
-    const bool lImportStatus = lImporter->Initialize(pFilename, -1, pManager->GetIOSettings());
+    const bool lImportStatus = lImporter->Initialize(Filename.c_str(), -1, pManager->GetIOSettings());
     lImporter->GetFileVersion(lFileMajor, lFileMinor, lFileRevision);
 
     if( !lImportStatus )
@@ -136,7 +132,7 @@ bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filenam
         if (lImporter->GetStatus().GetCode() == FbxStatus::eInvalidFileVersion)
         {
             FBXSDK_printf("FBX file format version for this FBX SDK is %d.%d.%d\n", lSDKMajor, lSDKMinor, lSDKRevision);
-            FBXSDK_printf("FBX file format version for file '%s' is %d.%d.%d\n\n", pFilename, lFileMajor, lFileMinor, lFileRevision);
+            FBXSDK_printf("FBX file format version for file '%s' is %d.%d.%d\n\n", Filename.c_str(), lFileMajor, lFileMinor, lFileRevision);
         }
 
         return false;
@@ -146,7 +142,7 @@ bool LoadScene(FbxManager* pManager, FbxDocument* pScene, const QString& Filenam
 
     if (lImporter->IsFBX())
     {
-        FBXSDK_printf("FBX file format version for file '%s' is %d.%d.%d\n\n", pFilename, lFileMajor, lFileMinor, lFileRevision);
+        FBXSDK_printf("FBX file format version for file '%s' is %d.%d.%d\n\n", Filename.c_str(), lFileMajor, lFileMinor, lFileRevision);
 
         // From this point, it is possible to access animation stack information without
         // the expense of loading the entire file.

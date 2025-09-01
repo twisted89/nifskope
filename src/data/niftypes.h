@@ -39,9 +39,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QDebug>
 #include <QString>
 
-#include <cfloat>
 #include <cmath>
 #include <stdlib.h>
+
+#include <Eigen/Dense>
+#include <Eigen/Geometry>
 
 #ifndef PI
 #ifdef M_PI
@@ -367,11 +369,29 @@ public:
 		return *this;
 	}
 
+    //! Find the distance between two vectors
+    float distance(const Vector3 & v )
+    {
+        return sqrt(pow(this->xyz[0] - v[0], 2) + pow(this->xyz[1] - v[1], 2) + pow(this->xyz[2] - v[2], 2));
+    }
+
+    Eigen::Vector3d toYUp()
+    {
+        // Transformation matrix: -90 degrees rotation around X-axis
+        Eigen::Matrix3d transform;
+        transform << 1,  0,  0,
+                     0,  0,  1,
+                     0, -1,  0;
+
+        return transform * Eigen::Vector3d(this->xyz[0], this->xyz[1], this->xyz[2]);
+    }
+
 	//! Find the dot product of two vectors
 	static float dotproduct( const Vector3 & v1, const Vector3 & v2 )
 	{
 		return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
 	}
+
 	//! Find the cross product of two vectors
 	static Vector3 crossproduct( const Vector3 & a, const Vector3 & b )
 	{
@@ -866,6 +886,12 @@ public:
 	{
 		memcpy( m, identity, 36 );
 	}
+
+    Matrix(const float matrixArray[9])
+    {
+        memcpy( m, matrixArray, 36 );
+    }
+
 	//! Times operator for a matrix
 	Matrix operator*( const Matrix & m2 ) const
 	{
@@ -917,6 +943,8 @@ public:
 	//! Find the inverted form
 	Matrix inverted() const;
 
+    Matrix tranpose () const;
+
 	//! Set from quaternion
 	void fromQuat( const Quat & q );
 	//! Convert to quaternion
@@ -926,6 +954,9 @@ public:
 	void fromEuler( float x, float y, float z );
 	//! Convert to Euler angles
 	bool toEuler( float & x, float & y, float & z ) const;
+
+    //! Convert to Euler angles in  XYZ order
+    Eigen::Vector3d toEulerXYZ();
 
 	//! Find a matrix from Euler angles
 	static Matrix euler( float x, float y, float z )
