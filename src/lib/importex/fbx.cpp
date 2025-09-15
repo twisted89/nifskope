@@ -18,6 +18,7 @@
 
 struct FBX_ExportContext {
     std::map<uint, FbxNode*> NodeMap;
+    FbxArray<FbxNode*> NodeLinksArray;
 };
 
 QModelIndex FindSceneRoot(const NifModel * nif, const QModelIndex & iNode)
@@ -86,6 +87,7 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
                 node->LclRotation.Set(FbxDouble3(rot.x() / PI * 180, rot.y() / PI * 180, rot.z() / PI * 180));
 
                 parentnode->AddChild(node);
+
                 ProcessNode(nif, iBlock, pScene, node, ctx);
             }
             else
@@ -96,8 +98,28 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
     }
 }
 
-void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pScene, FBX_ExportContext &ctx)
+void AddNodeRecursively(FBX_ExportContext &ctx, FbxNode* pNode)
 {
+    if (pNode)
+    {
+        AddNodeRecursively(ctx, pNode->GetParent());
+
+        if (ctx.NodeLinksArray.Find(pNode) == -1)
+        {
+            // Node not in the list, add it
+            ctx.NodeLinksArray.Add(pNode);
+        }
+    }
+}
+
+float precision( float f, int places )
+{
+    float n = std::pow(10.0f, places ) ;
+    return std::round(f * n) / n ;
+}
+
+void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pScene, FBX_ExportContext &ctx)
+{   
     foreach ( const int l, nif->getChildLinks( nif->getBlockNumber( iNode )) ) {
         QModelIndex iBlock = nif->getBlock( l );
 
@@ -111,7 +133,7 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
             auto blockName = nif->get<QString>( iBlock, "Name" ).toStdString();
 
             FbxNode* meshNode = FbxNode::Create(pScene, "");
-            FbxMesh* lMesh = FbxMesh::Create(pScene, blockName.c_str());
+            FbxMesh* mesh = FbxMesh::Create(pScene, blockName.c_str());
 
             auto parentnode = ctx.NodeMap[nif->getBlockNumber( iNode )];
             if(!parentnode)
@@ -120,8 +142,8 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                 continue;
             }
 
-            meshNode->SetNodeAttribute(lMesh);
             parentnode->AddChild(meshNode);
+            meshNode->SetNodeAttribute(mesh);
 
             QVector<Vector3> verts  = nif->getArray<Vector3>( iBlock, "Vertices" );
             QVector<Vector3> norms  = nif->getArray<Vector3>( iBlock, "Normals" );
@@ -168,7 +190,7 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
             }
 
             // Create UV for Diffuse channel
-            FbxGeometryElementUV* lUVDiffuseElement = lMesh->CreateElementUV("");
+            FbxGeometryElementUV* lUVDiffuseElement = mesh->CreateElementUV("");
             FBX_ASSERT( lUVDiffuseElement != NULL);
             lUVDiffuseElement->SetMappingMode(FbxGeometryElement::eByControlPoint);
             lUVDiffuseElement->SetReferenceMode(FbxGeometryElement::eDirect);
@@ -179,8 +201,8 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
             }
 
             // Create control points
-            lMesh->InitControlPoints(verts.count());
-            FbxVector4* controlPoints = lMesh->GetControlPoints();
+            mesh->InitControlPoints(verts.count());
+            FbxVector4* controlPoints = mesh->GetControlPoints();
 
             for(int i = 0; i < verts.count(); i++)
             {
@@ -192,19 +214,32 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
             // all faces of the cube have the same texture
             for(int i = 0; i < triangles.count(); i++)
             {
-                lMesh->BeginPolygon(-1, -1, -1, false);
+                mesh->BeginPolygon(-1, -1, -1, false);
 
                 // Control point indices
-                lMesh->AddPolygon(triangles[i].v1());
-                lMesh->AddPolygon(triangles[i].v2());
-                lMesh->AddPolygon(triangles[i].v3());
+                mesh->AddPolygon(triangles[i].v1());
+                mesh->AddPolygon(triangles[i].v2());
+                mesh->AddPolygon(triangles[i].v3());
 
-                lMesh->EndPolygon ();
+                mesh->EndPolygon ();
             }
 
             if(nif->inherits( iBlock, "NiSkinCore" ))
             {
-                auto skeletonRoot = nif->getParent( iBlock );
+                if(ftriangles.count() == 98)
+                    __debugbreak();
+
+                //Keep track of cluster linked to specific bone for the entire mesh
+                std::map<uint, FbxCluster*> clusterMap;
+                auto skinParent = ctx.NodeMap[nif->getBlockNumber( iNode )];
+
+                if(!skinParent)
+                {
+                    qCCritical( nsIo ) << "Failed to find skin parent " << nif->getBlockNumber( iNode ) << "For skin" << nif->getBlockNumber( iBlock );
+                    continue;
+                }
+
+                FbxSkin* meshSkin = FbxSkin::Create(pScene, "");
 
                 QModelIndex idxSkinVertices = nif->getIndex( iBlock, "Skin Vertex Data" );
                 if ( idxSkinVertices.isValid() ) {
@@ -219,24 +254,47 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                                 QModelIndex skinInstance = instanceArray.child( i, 0 );
                                 if(skinInstance.isValid())
                                 {
-                                    auto weight = nif->get<float>( skinInstance, "Weight");
-                                    auto offset = nif->get<Vector3>( skinInstance, "Offset");
+                                    auto weight = precision(nif->get<float>( skinInstance, "Weight"), 7);
+                                    auto offset = nif->get<Vector3>( skinInstance, "Offset").toYUp();
                                     auto boneIdx = nif->getLink(skinInstance, "Bone");
 
-                                    FbxNode* boneNode = ctx.NodeMap[boneIdx];
-                                    if(!boneNode)
+                                    if(weight > 1.0f || weight < 0.0f)
+                                        __debugbreak();
+
+                                    FbxCluster *boneCluster = clusterMap[boneIdx];
+                                    if(!boneCluster)
                                     {
-                                        qCCritical( nsIo ) << "Failed to find bone index " << boneIdx << "For mesh" << nif->getBlockNumber( iBlock );
-                                        continue;
+                                        FbxNode* boneNode = ctx.NodeMap[boneIdx];
+                                        if(!boneNode)
+                                        {
+                                            qCCritical( nsIo ) << "Failed to find bone index " << boneIdx << "For mesh" << nif->getBlockNumber( iBlock );
+                                            continue;
+                                        }
+                                        boneCluster = FbxCluster::Create(pScene,"");
+                                        boneCluster->SetLink(boneNode);
+                                        boneCluster->SetLinkMode(FbxCluster::eTotalOne);
+
+                                        //Weights use offsets so we need to fix the transform
+                                        FbxAMatrix offsetMatrix = boneNode->EvaluateGlobalTransform();
+                                        offsetMatrix.SetT(offsetMatrix.GetT() + FbxVector4(offset.x(), offset.y(), offset.z()));
+
+                                        boneCluster->SetTransformMatrix(meshNode->EvaluateGlobalTransform());
+                                        boneCluster->SetTransformLinkMatrix(offsetMatrix);
+                                        clusterMap[boneIdx] = boneCluster;
+
+                                        AddNodeRecursively(ctx, boneNode);
+                                        //meshSkin->AddCluster(boneCluster);
                                     }
-                                    FbxCluster *boneCluster = FbxCluster::Create(pScene,"");
-                                    boneCluster->SetLink(boneNode);
+
+                                    boneCluster->AddControlPointIndex(vindex, weight);
                                 }
                             }
                         }
                     }
                 }
+                mesh->AddDeformer(meshSkin);
             }
+            AddNodeRecursively(ctx, meshNode);
         }
     }
 }
@@ -275,6 +333,27 @@ bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene
     // Process meshes after navigating node tree to ensure bones are mapped
     ProcessMeshes(nif, iRoot, pScene, ctx);
 
+    // Now create a bind pose with the link list
+    if (ctx.NodeLinksArray.GetCount())
+    {
+        // A pose must be named
+        FbxPose* bindPose = FbxPose::Create(pScene, "BindPose");
+
+        // default pose type is rest pose, so we need to set the type as bind pose
+        bindPose->SetIsBindPose(true);
+
+        for (int i =0 ; i < ctx.NodeLinksArray.GetCount(); i++)
+        {
+            FbxNode*  lKFbxNode   = ctx.NodeLinksArray.GetAt(i);
+            FbxMatrix lBindMatrix = lKFbxNode->EvaluateGlobalTransform();
+
+            bindPose->Add(lKFbxNode, lBindMatrix);
+        }
+
+        // Add the pose to the scene
+        pScene->AddPose(bindPose);
+    }
+
     lRootNode->AddChild(lSkeletonRoot);
 
     return true;
@@ -307,7 +386,7 @@ void exportFBX( const NifModel * nif, const QModelIndex & index )
         return;
     }
 
-/*
+    /*
     if(lScene->GetGlobalSettings().GetSystemUnit() == FbxSystemUnit::cm)
     {
         const FbxSystemUnit::ConversionOptions lConversionOptions = {
