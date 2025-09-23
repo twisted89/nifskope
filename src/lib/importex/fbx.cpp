@@ -118,6 +118,24 @@ float precision( float f, int places )
     return std::round(f * n) / n ;
 }
 
+FbxAMatrix GetRelativeTransform(FbxNode* pChildNode, FbxNode* pParentNode, FbxTime pTime = FBXSDK_TIME_INFINITE) {
+    if (!pChildNode || !pParentNode) {
+        return FbxAMatrix(); // Return an identity matrix or handle error
+    }
+
+    // Get the global transform of the child node at the specified time
+    FbxAMatrix childGlobalTransform = pChildNode->EvaluateGlobalTransform(pTime);
+
+    // Get the global transform of the desired parent node at the specified time
+    FbxAMatrix parentGlobalTransform = pParentNode->EvaluateGlobalTransform(pTime);
+    FbxAMatrix parentGlobalTransformInverse = parentGlobalTransform.Inverse();
+
+    // The relative transform is calculated by: Inverse(Parent) * Child
+    FbxAMatrix relativeTransform = parentGlobalTransformInverse * childGlobalTransform;
+
+    return relativeTransform;
+}
+
 void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pScene, FBX_ExportContext &ctx)
 {   
     foreach ( const int l, nif->getChildLinks( nif->getBlockNumber( iNode )) ) {
@@ -130,6 +148,7 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
         else if(nif->inherits( iBlock, "NiSkinCore" ) || nif->itemName( iBlock ) == "NiTriShape"
                  || nif->inherits( iBlock, "NiTriShape" ))
         {
+            auto meshTranslation = Transform( nif, iBlock ).translation.toYUp();
             auto blockName = nif->get<QString>( iBlock, "Name" ).toStdString();
 
             FbxNode* meshNode = FbxNode::Create(pScene, "");
@@ -141,6 +160,8 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                 qCCritical( nsIo ) << "Failed to find node attached to mesh with block ID" << nif->getBlockNumber( iNode );
                 continue;
             }
+
+            meshNode->LclTranslation.Set(FbxVector4(meshTranslation.x(), meshTranslation.y(), meshTranslation.z()));
 
             parentnode->AddChild(meshNode);
             meshNode->SetNodeAttribute(mesh);
@@ -204,10 +225,13 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
             mesh->InitControlPoints(verts.count());
             FbxVector4* controlPoints = mesh->GetControlPoints();
 
-            for(int i = 0; i < verts.count(); i++)
+            if(!nif->inherits( iBlock, "NiSkinCore" ))
             {
-                auto vUp = verts[i].toYUp();
-                controlPoints[i].Set(vUp.x(), vUp.y(), vUp.z());
+                for(int i = 0; i < verts.count(); i++)
+                {
+                    auto vUp = verts[i].toYUp();
+                    controlPoints[i].Set(vUp.x(), vUp.y(), vUp.z());
+                }
             }
 
             // Create polygons. Assign texture and texture UV indices.
@@ -226,9 +250,6 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
 
             if(nif->inherits( iBlock, "NiSkinCore" ))
             {
-                if(ftriangles.count() == 98)
-                    __debugbreak();
-
                 //Keep track of cluster linked to specific bone for the entire mesh
                 std::map<uint, FbxCluster*> clusterMap;
                 auto skinParent = ctx.NodeMap[nif->getBlockNumber( iNode )];
@@ -254,39 +275,38 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                                 QModelIndex skinInstance = instanceArray.child( i, 0 );
                                 if(skinInstance.isValid())
                                 {
-                                    auto weight = precision(nif->get<float>( skinInstance, "Weight"), 7);
+                                    auto weight = nif->get<float>( skinInstance, "Weight");//, 7; precision(
                                     auto offset = nif->get<Vector3>( skinInstance, "Offset").toYUp();
                                     auto boneIdx = nif->getLink(skinInstance, "Bone");
 
                                     if(weight > 1.0f || weight < 0.0f)
                                         __debugbreak();
 
+                                    FbxNode* boneNode = ctx.NodeMap[boneIdx];
+                                    if(!boneNode)
+                                    {
+                                        qCCritical( nsIo ) << "Failed to find bone index " << boneIdx << "For mesh" << nif->getBlockNumber( iBlock );
+                                        continue;
+                                    }
+
                                     FbxCluster *boneCluster = clusterMap[boneIdx];
                                     if(!boneCluster)
                                     {
-                                        FbxNode* boneNode = ctx.NodeMap[boneIdx];
-                                        if(!boneNode)
-                                        {
-                                            qCCritical( nsIo ) << "Failed to find bone index " << boneIdx << "For mesh" << nif->getBlockNumber( iBlock );
-                                            continue;
-                                        }
                                         boneCluster = FbxCluster::Create(pScene,"");
                                         boneCluster->SetLink(boneNode);
                                         boneCluster->SetLinkMode(FbxCluster::eTotalOne);
-
-                                        //Weights use offsets so we need to fix the transform
-                                        FbxAMatrix offsetMatrix = boneNode->EvaluateGlobalTransform();
-                                        offsetMatrix.SetT(offsetMatrix.GetT() + FbxVector4(offset.x(), offset.y(), offset.z()));
-
                                         boneCluster->SetTransformMatrix(meshNode->EvaluateGlobalTransform());
-                                        boneCluster->SetTransformLinkMatrix(offsetMatrix);
+                                        boneCluster->SetTransformLinkMatrix(boneNode->EvaluateGlobalTransform());
                                         clusterMap[boneIdx] = boneCluster;
 
                                         AddNodeRecursively(ctx, boneNode);
-                                        //meshSkin->AddCluster(boneCluster);
+                                        meshSkin->AddCluster(boneCluster);
                                     }
-
                                     boneCluster->AddControlPointIndex(vindex, weight);
+
+                                    //Weights use offsets so we need to fix the transform
+                                    FbxAMatrix trans = GetRelativeTransform(boneNode, parentnode);
+                                    controlPoints[vindex] += trans.MultT(FbxVector4(offset.x(), offset.y(), offset.z())) * weight;
                                 }
                             }
                         }
