@@ -17,7 +17,7 @@ contains(QT_VERSION, ^5\\.[0-6]\\..*) {
 }
 
 # C++11/14 Support
-CONFIG += c++14
+CONFIG += c++17
 
 # Dependencies
 CONFIG += nvtristrip qhull zlib lz4 fsengine gli

@@ -11,15 +11,35 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTextStream>
+#include <filesystem>
 
 #include "FBXCommon.h"
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #define tr( x ) QApplication::tr( x )
 
 struct FBX_ExportContext {
+    std::string ExportPath;
     std::map<uint, FbxNode*> NodeMap;
     FbxArray<FbxNode*> NodeLinksArray;
 };
+
+bool CreateDirectoryRecursive(std::string const & dirName)
+{
+    std::error_code err;
+    if (!std::filesystem::create_directories(dirName, err))
+    {
+        if (std::filesystem::exists(dirName))
+        {
+            // The folder already exists:
+            return true;
+        }
+        return false;
+    }
+    return true;
+}
 
 QModelIndex FindSceneRoot(const NifModel * nif, const QModelIndex & iNode)
 {
@@ -61,7 +81,6 @@ bool HasChildBone(const NifModel * nif, const QModelIndex & iNode)
     return false;
 }
 
-
 void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pScene, FbxNode* parentnode, FBX_ExportContext &ctx)
 {
     foreach ( const int l, nif->getChildLinks( nif->getBlockNumber( iNode )) ) {
@@ -93,6 +112,51 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
             else
             {
                 qCCritical( nsIo ) << "Failed to create node with block ID" << nif->getBlockNumber( iBlock );
+            }
+        }
+        else if(nif->isNiBlock( iBlock, "NiTextureProperty"))
+        {
+            foreach ( const int cl, nif->getChildLinks( nif->getBlockNumber( iNode )) ) {
+                QModelIndex ciBlock = nif->getBlock( cl );
+                if(nif->isNiBlock( ciBlock, "NiImage"))
+                {
+                    QModelIndex iImage = nif->getBlock( nif->getLink( ciBlock, "Image Data" ));
+                    if(nif->getBlockName(iImage) == "NiRawImageData")
+                    {
+                        auto width  = nif->get<uint>( iImage, "Width" );
+                        auto height = nif->get<uint>( iImage, "Height" );
+                        auto type = nif->get<int>( iImage, "Image Type" );
+
+                        int components;
+                        switch(type)
+                        {
+                        case 1: //RGB
+                            components = 3;
+                            break;
+                        case 2: // RGBA
+                            components = 4;
+                            break;
+                        default:
+                            continue;
+                        }
+
+                        QModelIndex iPixelData = nif->getIndex( iImage, "RGBA Image Data" );
+
+                        if ( iPixelData.isValid() ) {
+                            if ( QByteArray * pdata = nif->get<QByteArray *>( iPixelData.child(0, 0) ) ) {
+
+                                const std::string filename = ctx.ExportPath
+                                                             + "/Textures/"
+                                                             + std::to_string(nif->getBlockNumber( iNode ))
+                                                             + "_" + std::to_string(nif->getBlockNumber( ciBlock ))
+                                                             + ".png";
+
+                                // Save the image
+                                stbi_write_png(filename.c_str(), width, height, components, pdata->data(), 100);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -313,13 +377,15 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                     }
                 }
                 mesh->AddDeformer(meshSkin);
+
+
             }
             AddNodeRecursively(ctx, meshNode);
         }
     }
 }
 
-bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene, QString exportDir, FBX_ExportContext &ctx)
+bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene, FBX_ExportContext &ctx)
 {
     // create scene info
     FbxDocumentInfo* sceneInfo = FbxDocumentInfo::Create(pSdkManager,"SceneInfo");
@@ -393,11 +459,14 @@ void exportFBX( const NifModel * nif, const QModelIndex & index )
     if ( exportDir.isEmpty() )
         return;
 
+    ctx.ExportPath = exportDir.toStdString();
+    CreateDirectoryRecursive(exportDir.toStdString() + "/Textures");
+
     // Prepare the FBX SDK.
     InitializeSdkObjects(lSdkManager, lScene);
 
     // Create the scene.
-    lResult = CreateScene(nif, lSdkManager, lScene, exportDir, ctx);
+    lResult = CreateScene(nif, lSdkManager, lScene, ctx);
 
     if(lResult == false)
     {
