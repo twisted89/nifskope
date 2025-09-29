@@ -23,6 +23,8 @@
 struct FBX_ExportContext {
     std::string ExportPath;
     std::map<uint, FbxNode*> NodeMap;
+    std::map<uint, std::vector<std::string>> textureMap;
+    std::map<uint, FbxSurfacePhong*> materialMap;
     FbxArray<FbxNode*> NodeLinksArray;
 };
 
@@ -114,45 +116,98 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
                 qCCritical( nsIo ) << "Failed to create node with block ID" << nif->getBlockNumber( iBlock );
             }
         }
-        else if(nif->isNiBlock( iBlock, "NiTextureProperty"))
+        else if(nif->inherits( iBlock, "NiSkinCore" ) || nif->itemName( iBlock ) == "NiTriShape"
+                   || nif->inherits( iBlock, "NiTriShape" ))
         {
-            foreach ( const int cl, nif->getChildLinks( nif->getBlockNumber( iNode )) ) {
-                QModelIndex ciBlock = nif->getBlock( cl );
-                if(nif->isNiBlock( ciBlock, "NiImage"))
+            for ( const auto pl : nif->getLinkArray( iBlock, "Properties" ) ) {
+
+                QModelIndex ipBlock = nif->getBlock( pl );
+
+                if(nif->isNiBlock( ipBlock, "NiMaterialProperty"))
                 {
-                    QModelIndex iImage = nif->getBlock( nif->getLink( ciBlock, "Image Data" ));
-                    if(nif->getBlockName(iImage) == "NiRawImageData")
-                    {
-                        auto width  = nif->get<uint>( iImage, "Width" );
-                        auto height = nif->get<uint>( iImage, "Height" );
-                        auto type = nif->get<int>( iImage, "Image Type" );
+                    float alpha = nif->get<float>( ipBlock, "Alpha" );
 
-                        int components;
-                        switch(type)
+                    if ( alpha < 0.0 )
+                        alpha = 0.0;
+
+                    if ( alpha > 1.0 )
+                        alpha = 1.0;
+
+                    auto ambient  = nif->get<Color3>( ipBlock, "Ambient Color" );
+                    auto diffuse  = nif->get<Color3>( ipBlock, "Diffuse Color" );
+                    auto specular = nif->get<Color3>( ipBlock, "Specular Color" );
+                    auto emissive = nif->get<Color3>( ipBlock, "Emissive Color" );
+                    auto shininess = nif->get<float>( ipBlock, "Glossiness" );
+
+                    FbxSurfacePhong* lMaterial = FbxSurfacePhong::Create(pScene, "");
+
+                    // Generate primary and secondary colors.
+                    lMaterial->Emissive           .Set(FbxDouble3(emissive.red(), emissive.green(), emissive.blue()));
+                    lMaterial->Ambient            .Set(FbxDouble3(ambient.red(), ambient.green(), ambient.blue()));
+                    lMaterial->AmbientFactor      .Set(1.);
+                    // Add texture for diffuse channel
+                    lMaterial->Diffuse           .Set(FbxDouble3(diffuse.red(), diffuse.green(), diffuse.blue()));
+                    lMaterial->DiffuseFactor     .Set(1.);
+                    lMaterial->TransparencyFactor.Set(alpha);
+                    lMaterial->ShadingModel      .Set("Phong");
+                    lMaterial->Shininess         .Set(shininess);
+                    lMaterial->Specular          .Set(FbxDouble3(specular.red(), specular.green(), specular.blue()));
+                    lMaterial->SpecularFactor    .Set(0.3);
+
+                    ctx.materialMap[nif->getBlockNumber( iBlock )] = lMaterial;
+                }
+                else if(nif->isNiBlock( ipBlock, "NiTextureProperty"))
+                {
+                    int textureCount = 1;
+                    foreach ( const int cl, nif->getChildLinks( nif->getBlockNumber( ipBlock )) ) {
+                        QModelIndex ciBlock = nif->getBlock( cl );
+                        if(nif->isNiBlock( ciBlock, "NiImage"))
                         {
-                        case 1: //RGB
-                            components = 3;
-                            break;
-                        case 2: // RGBA
-                            components = 4;
-                            break;
-                        default:
-                            continue;
-                        }
+                            QModelIndex iImage = nif->getBlock( nif->getLink( ciBlock, "Image Data" ));
+                            if(nif->getBlockName(iImage) == "NiRawImageData")
+                            {
+                                auto width  = nif->get<uint>( iImage, "Width" );
+                                auto height = nif->get<uint>( iImage, "Height" );
+                                auto type = nif->get<int>( iImage, "Image Type" );
 
-                        QModelIndex iPixelData = nif->getIndex( iImage, "RGBA Image Data" );
+                                QModelIndex iPixelData;
+                                int components;
+                                switch(type)
+                                {
+                                case 1: //RGB
+                                    components = 3;
+                                    iPixelData = nif->getIndex( iImage, "RGB Image Data" );
+                                    break;
+                                case 2: // RGBA
+                                    components = 4;
+                                    iPixelData = nif->getIndex( iImage, "RGBA Image Data" );
+                                    break;
+                                default:
+                                    qCCritical( nsIo ) << "Unsupported image type" << type << "for block ID" << nif->getBlockNumber( iImage );
+                                    continue;
+                                }
 
-                        if ( iPixelData.isValid() ) {
-                            if ( QByteArray * pdata = nif->get<QByteArray *>( iPixelData.child(0, 0) ) ) {
+                                if ( iPixelData.isValid() ) {
+                                    if ( QByteArray * pdata = nif->get<QByteArray *>( iPixelData.child(0, 0) ) ) {
 
-                                const std::string filename = ctx.ExportPath
-                                                             + "/Textures/"
-                                                             + std::to_string(nif->getBlockNumber( iNode ))
-                                                             + "_" + std::to_string(nif->getBlockNumber( ciBlock ))
-                                                             + ".png";
+                                        std::string textureName = (blockName.empty() ? std::to_string(nif->getBlockNumber(iBlock)) : blockName) + "_" + std::to_string(textureCount++);
+                                        // Avoid overwriting existing textures
+                                        while(std::filesystem::exists(ctx.ExportPath
+                                                                       + "/Textures/"
+                                                                       + textureName
+                                                                       + ".png"))
+                                            textureName = (blockName.empty() ? std::to_string(nif->getBlockNumber(iBlock)) : blockName) + "_" + std::to_string(textureCount++);
 
-                                // Save the image
-                                stbi_write_png(filename.c_str(), width, height, components, pdata->data(), 100);
+                                        ctx.textureMap[nif->getBlockNumber( iBlock )].push_back(textureName);
+                                        const std::string filename = ctx.ExportPath
+                                                                     + "/Textures/"
+                                                                     + textureName
+                                                                     + ".png";
+
+                                        // Save the image
+                                        stbi_write_png(filename.c_str(), width, height, components, pdata->data(), width * components);
+                                    }
+                                }
                             }
                         }
                     }
@@ -229,6 +284,7 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
 
             parentnode->AddChild(meshNode);
             meshNode->SetNodeAttribute(mesh);
+            meshNode->SetShadingMode(FbxNode::eTextureShading);
 
             QVector<Vector3> verts  = nif->getArray<Vector3>( iBlock, "Vertices" );
             QVector<Vector3> norms  = nif->getArray<Vector3>( iBlock, "Normals" );
@@ -272,17 +328,6 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
 
                 if ( !inv_idx )
                     triangles.append( t );
-            }
-
-            // Create UV for Diffuse channel
-            FbxGeometryElementUV* lUVDiffuseElement = mesh->CreateElementUV("");
-            FBX_ASSERT( lUVDiffuseElement != NULL);
-            lUVDiffuseElement->SetMappingMode(FbxGeometryElement::eByControlPoint);
-            lUVDiffuseElement->SetReferenceMode(FbxGeometryElement::eDirect);
-
-            for(auto &tc : textureCoords)
-            {
-                lUVDiffuseElement->GetDirectArray().Add(tc);
             }
 
             // Create control points
@@ -380,6 +425,70 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
 
 
             }
+
+            //Apply texture
+            auto textures = ctx.textureMap[nif->getBlockNumber( iBlock )];
+            if(textures.size())
+            {
+                auto textureName = textures.front();
+                std::string textureFilename = ctx.ExportPath + "/Textures/" + textureName + ".png";
+                FbxSurfacePhong* lMaterial = ctx.materialMap[nif->getBlockNumber( iBlock )];
+                if (lMaterial)
+                {
+                    FbxLayer* lLayer = mesh->GetLayer(0);
+
+                    // Create a layer element material to handle proper mapping.
+                    FbxLayerElementMaterial* lLayerElementMaterial = FbxLayerElementMaterial::Create(mesh, "");
+
+                    // This allows us to control where the materials are mapped.  Using eAllSame
+                    // means that all faces/polygons of the mesh will be assigned the same material.
+                    lLayerElementMaterial->SetMappingMode(FbxLayerElement::eAllSame);
+                    lLayerElementMaterial->SetReferenceMode(FbxLayerElement::eIndexToDirect);
+                    // Add an index to the lLayerElementMaterial.  Since we have only one, and are using eAllSame mapping mode,
+                    // we only need to add one.
+                    lLayerElementMaterial->GetIndexArray().Add(0);
+
+                    // Save the material on the layer
+                    lLayer->SetMaterials(lLayerElementMaterial);
+
+                    FbxFileTexture* lTexture = FbxFileTexture::Create(pScene, textureName.c_str());
+
+                    // Set texture properties.
+                    lTexture->SetFileName(textureFilename.c_str()); // Resource file is in current directory.
+                    lTexture->SetTextureUse(FbxTexture::eStandard);
+                    lTexture->SetMappingType(FbxTexture::eUV);
+                    lTexture->SetMaterialUse(FbxFileTexture::eModelMaterial);
+                    lTexture->SetSwapUV(false);
+                    lTexture->SetTranslation(0.0, 0.0);
+                    lTexture->SetScale(1.0, 1.0);
+                    lTexture->SetRotation(0.0, 0.0);
+                    // lTexture->UVSet.Set(FbxString(gDiffuseElementName)); // Connect texture to the proper UV
+
+                    // Connect the texture to the corresponding property of the material
+                    lMaterial->Diffuse.ConnectSrcObject(lTexture);
+
+                    FbxLayerElementTexture* lTextureElement = FbxLayerElementTexture::Create(mesh, "Diffuse Texture");
+                    lTextureElement->SetMappingMode(FbxLayerElement::eByControlPoint); // Use control point mapping for direct access.
+                    lTextureElement->SetReferenceMode(FbxLayerElement::eDirect); // Direct reference to the textures.
+                    lTextureElement->GetDirectArray().Add(lTexture);
+                    lLayer->SetTextures(FbxLayerElement::EType::eTextureDiffuse, lTextureElement);
+
+                    // Create and configure the UV element for direct index access.
+                    FbxLayerElementUV* lUVElement = FbxLayerElementUV::Create(mesh, "DiffuseUV");
+                    lUVElement->SetMappingMode(FbxLayerElement::eByControlPoint); // Mapping for direct UV access.
+                    lUVElement->SetReferenceMode(FbxLayerElement::eDirect); // Reference mode for direct UV values.
+
+                    for(auto &tc : textureCoords)
+                    {
+                        lUVElement->GetDirectArray().Add(tc);
+                    }
+
+                    lLayer->SetUVs(lUVElement, FbxLayerElement::EType::eTextureDiffuse);
+
+                    meshNode->AddMaterial(lMaterial);
+                }
+            }
+
             AddNodeRecursively(ctx, meshNode);
         }
     }
@@ -460,6 +569,8 @@ void exportFBX( const NifModel * nif, const QModelIndex & index )
         return;
 
     ctx.ExportPath = exportDir.toStdString();
+    std::error_code errCode;
+    std::filesystem::remove_all(exportDir.toStdString() + "/Textures", errCode);
     CreateDirectoryRecursive(exportDir.toStdString() + "/Textures");
 
     // Prepare the FBX SDK.
