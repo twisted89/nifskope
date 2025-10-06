@@ -74,3 +74,11 @@ vc100.pdb
 *.DS_Store
 *.idx
 build/
+lib/fbx/alembic-md.lib
+lib/fbx/alembic-mdd.lib
+lib/fbx/libfbxsdk-md.lib
+lib/fbx/libfbxsdk-mdd.lib
+lib/fbx/libxml2-md.lib
+lib/fbx/libxml2-mdd.lib
+lib/fbx/zlib-md.lib
+lib/fbx/zlib-mdd.lib

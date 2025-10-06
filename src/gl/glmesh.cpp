@@ -917,6 +917,9 @@ void Mesh::transformShapes()
 
         if(nif && nif->getVersionNumber() == 0x02030000)
         {
+            //if(nif->getBlockNumber(iSkin) == 486)
+            //    qDebug() << "test";
+
             QModelIndex idxSkinVertices = nif->getIndex( iSkin, "Skin Vertex Data" );
             if ( idxSkinVertices.isValid() ) {
                 for ( int vindex = 0; vindex < nif->rowCount( idxSkinVertices ) && vindex < vcnt; vindex++ ) {

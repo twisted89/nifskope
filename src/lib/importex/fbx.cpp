@@ -83,7 +83,7 @@ bool HasChildBone(const NifModel * nif, const QModelIndex & iNode)
     return false;
 }
 
-void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pScene, FbxNode* parentnode, FBX_ExportContext &ctx)
+void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scene, FbxAnimLayer* animLayer, FbxNode* parentnode, FBX_ExportContext &ctx)
 {
     foreach ( const int l, nif->getChildLinks( nif->getBlockNumber( iNode )) ) {
         QModelIndex iBlock = nif->getBlock( l );
@@ -92,12 +92,12 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
 
         if(nif->isNiBlock( iBlock, "NiNode") || nif->inherits( iBlock, "NiNode" ))
         {
-            FbxNode* node = node = FbxNode::Create(pScene, blockName.c_str() );
+            FbxNode* node = node = FbxNode::Create(scene, blockName.c_str() );
             if(node) {
 
                 ctx.NodeMap[nif->getBlockNumber( iBlock )] = node;
 
-                FbxSkeleton* lSkeletonLimbNodeAttribute1 = FbxSkeleton::Create(pScene, blockName.c_str());
+                FbxSkeleton* lSkeletonLimbNodeAttribute1 = FbxSkeleton::Create(scene, blockName.c_str());
                 lSkeletonLimbNodeAttribute1->SetSkeletonType( FbxSkeleton::eLimb ); //HasChildBone(nif, iBlock) ?  FbxSkeleton::eLimb : FbxSkeleton::eEffector
                 node->AddNodeAttribute(lSkeletonLimbNodeAttribute1);
 
@@ -105,11 +105,81 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
                 Eigen::Vector3d rot = t.rotation.toEulerXYZ();
 
                 node->LclTranslation.Set(FbxDouble3(pos.x(), pos.y(), pos.z()));
-                node->LclRotation.Set(FbxDouble3(rot.x() / PI * 180, rot.y() / PI * 180, rot.z() / PI * 180));
+                node->LclRotation.Set(FbxDouble3(rot.x(), rot.y(), rot.z()));
+
+                if ( nif->isNiBlock(iBlock ,"Ni3dsAnimationNode") || nif->isNiBlock( iBlock , "Ni3dsBone"))
+                {
+                    auto start = nif->get<float>( iBlock, "Start Time" );
+                    //auto hiKeyTime = nif->get<float>( iBlock, "HiKeyTime" );
+                    //auto lowKeyTime = nif->get<float>( iBlock, "LoKeyTime" );
+                    //auto stop = hiKeyTime - lowKeyTime;
+                    //auto phase = nif->get<float>( iBlock, "Phase" );
+                    //auto frequency = nif->get<float>( iBlock, "Frequency" );
+
+                    auto iTranslations = nif->getIndex( iBlock, "Translations" );
+                    auto iRotations = nif->getIndex( iBlock, "Rotations" );
+                    //auto iScales = nif->getIndex( iBlock, "Scales" );
+                    //auto iVisibilities = nif->getIndex( iBlock, "Visibilities" );
+
+                    QModelIndex tkeys = nif->getIndex( iTranslations, "Keys" );
+
+                    if(tkeys.isValid())
+                    {
+                        // Get the animation curves for local translation (create if needed)
+                        FbxAnimCurve* lTranslationCurveX = node->LclTranslation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_X, true);
+                        FbxAnimCurve* lTranslationCurveY = node->LclTranslation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Y, true);
+                        FbxAnimCurve* lTranslationCurveZ = node->LclTranslation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Z, true);
+
+                        for ( int tindex = 0; tindex < nif->rowCount( tkeys ); tindex++ ) {
+                            QModelIndex tkey = tkeys.child( tindex, 0 );
+                            auto tval = nif->get<Vector3>( tkey, "Value" ).toYUp();
+                            FbxTime fbxTime(nif->get<float>( tkey, "Time" ) * FBXSDK_TC_SECOND);
+
+                            auto animX = FbxAnimCurveKey(fbxTime, tval.x());
+                            auto animY = FbxAnimCurveKey(fbxTime, tval.y());
+                            auto animZ = FbxAnimCurveKey(fbxTime, tval.z());
+
+                            lTranslationCurveX->KeyAdd(fbxTime, animX);
+                            lTranslationCurveY->KeyAdd(fbxTime, animY);
+                            lTranslationCurveZ->KeyAdd(fbxTime, animZ);
+                        }
+                    }
+
+
+                    QModelIndex rkeys = nif->getIndex( iRotations, "Quaternion Keys" );
+                    if(rkeys.isValid())
+                    {
+                        // Get the animation curves for local rotation (create if needed)
+                        FbxAnimCurve* lRotationCurveX = node->LclRotation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_X, true);
+                        FbxAnimCurve* lRotationCurveY = node->LclRotation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Y, true);
+                        FbxAnimCurve* lRotationCurveZ = node->LclRotation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Z, true);
+
+                        for ( int rindex = 0; rindex < nif->rowCount( rkeys ); rindex++ ) {
+                            QModelIndex rkey = rkeys.child( rindex, 0 );
+                            Quat rot = nif->get<Quat>( rkey, "Value" );
+
+                            FbxTime fbxTime(nif->get<float>( rkey, "Time" ) * FBXSDK_TC_SECOND);
+
+                            Matrix mtx;
+                            mtx.fromQuat(rot);
+
+                            // Use the same coordinate transformation as the base transform
+                            auto lEuler = mtx.toEulerXYZ();
+
+                            auto animX = FbxAnimCurveKey(fbxTime, lEuler.x());
+                            auto animY = FbxAnimCurveKey(fbxTime, lEuler.y());
+                            auto animZ = FbxAnimCurveKey(fbxTime, lEuler.z());
+
+                            lRotationCurveX->KeyAdd(fbxTime, animX);
+                            lRotationCurveY->KeyAdd(fbxTime, animY);
+                            lRotationCurveZ->KeyAdd(fbxTime, animZ);
+                        }
+                    }
+                }
 
                 parentnode->AddChild(node);
 
-                ProcessNode(nif, iBlock, pScene, node, ctx);
+                ProcessNode(nif, iBlock, scene, animLayer, node, ctx);
             }
             else
             {
@@ -139,7 +209,7 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
                     auto emissive = nif->get<Color3>( ipBlock, "Emissive Color" );
                     auto shininess = nif->get<float>( ipBlock, "Glossiness" );
 
-                    FbxSurfacePhong* lMaterial = FbxSurfacePhong::Create(pScene, "");
+                    FbxSurfacePhong* lMaterial = FbxSurfacePhong::Create(scene, "");
 
                     // Generate primary and secondary colors.
                     lMaterial->Emissive           .Set(FbxDouble3(emissive.red(), emissive.green(), emissive.blue()));
@@ -152,10 +222,11 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
                     lMaterial->ShadingModel      .Set("Phong");
                     lMaterial->Shininess         .Set(shininess);
                     lMaterial->Specular          .Set(FbxDouble3(specular.red(), specular.green(), specular.blue()));
-                    lMaterial->SpecularFactor    .Set(0.3);
+                    lMaterial->SpecularFactor    .Set(0.0);
 
                     ctx.materialMap[nif->getBlockNumber( iBlock )] = lMaterial;
                 }
+
                 else if(nif->isNiBlock( ipBlock, "NiTextureProperty"))
                 {
                     int textureCount = 1;
@@ -212,6 +283,7 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* pSce
                         }
                     }
                 }
+
             }
         }
     }
@@ -256,7 +328,7 @@ FbxAMatrix GetRelativeTransform(FbxNode* pChildNode, FbxNode* pParentNode, FbxTi
 }
 
 void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pScene, FBX_ExportContext &ctx)
-{   
+{
     foreach ( const int l, nif->getChildLinks( nif->getBlockNumber( iNode )) ) {
         QModelIndex iBlock = nif->getBlock( l );
 
@@ -280,9 +352,17 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                 continue;
             }
 
-            meshNode->LclTranslation.Set(FbxVector4(meshTranslation.x(), meshTranslation.y(), meshTranslation.z()));
-
-            parentnode->AddChild(meshNode);
+            // We need to move any skinned meshes into the root space otherwise they'll pivot around their parent origins
+            if(nif->inherits( iBlock, "NiSkinCore" ))
+            {
+                meshNode->LclTranslation.Set(parentnode->EvaluateGlobalTransform().GetT());
+                meshNode->LclRotation.Set(parentnode->EvaluateGlobalTransform().GetR());
+                pScene->GetRootNode()->AddChild(meshNode);
+            }
+            else {
+                meshNode->LclTranslation.Set(FbxVector4(meshTranslation.x(), meshTranslation.y(), meshTranslation.z()));
+                parentnode->AddChild(meshNode);
+            }
             meshNode->SetNodeAttribute(mesh);
             meshNode->SetShadingMode(FbxNode::eTextureShading);
 
@@ -304,7 +384,7 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                 QVector<Vector3> vec3 = nif->getArray<Vector3>( uvcoord );
                 for(const Vector3& v3 : vec3)
                 {
-                    textureCoords.append(FbxVector2(v3[0], v3[1]));
+                    textureCoords.append(FbxVector2(v3[0], 1.0 - v3[1]));
                 }
 
                 if ( textureCoords.count() < verts.count() )
@@ -344,7 +424,6 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
             }
 
             // Create polygons. Assign texture and texture UV indices.
-            // all faces of the cube have the same texture
             for(int i = 0; i < triangles.count(); i++)
             {
                 mesh->BeginPolygon(-1, -1, -1, false);
@@ -437,6 +516,12 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                 {
                     FbxLayer* lLayer = mesh->GetLayer(0);
 
+                    if (!lLayer)
+                    {
+                        mesh->CreateLayer();
+                        lLayer = mesh->GetLayer(0);
+                    }
+
                     // Create a layer element material to handle proper mapping.
                     FbxLayerElementMaterial* lLayerElementMaterial = FbxLayerElementMaterial::Create(mesh, "");
 
@@ -457,8 +542,8 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                     lTexture->SetFileName(textureFilename.c_str()); // Resource file is in current directory.
                     lTexture->SetTextureUse(FbxTexture::eStandard);
                     lTexture->SetMappingType(FbxTexture::eUV);
-                    lTexture->SetMaterialUse(FbxFileTexture::eModelMaterial);
                     lTexture->SetSwapUV(false);
+                    lTexture->SetMaterialUse(FbxFileTexture::eModelMaterial);
                     lTexture->SetTranslation(0.0, 0.0);
                     lTexture->SetScale(1.0, 1.0);
                     lTexture->SetRotation(0.0, 0.0);
@@ -524,7 +609,20 @@ bool CreateScene(const NifModel * nif, FbxManager *pSdkManager, FbxScene* pScene
     lSkeletonRoot->SetNodeAttribute(lSkeletonRootAttribute);
     lSkeletonRoot->LclTranslation.Set(FbxVector4(0.0, 0.0, 0.0));
 
-    ProcessNode(nif, iRoot, pScene, lSkeletonRoot, ctx);
+    // Create an animation stack
+    FbxAnimStack* lAnimStack = FbxAnimStack::Create(pScene, "AnimationStack");
+
+    // Create an animation layer for the stack
+    FbxAnimLayer* lAnimLayer = FbxAnimLayer::Create(pScene, "Base Layer");
+    lAnimStack->AddMember(lAnimLayer);
+
+    FbxTimeSpan ts;
+    ts.Set(FbxTime(0), 120 * FBXSDK_TC_SECOND) ;
+    lAnimStack->SetLocalTimeSpan(ts);
+
+    pScene->SetCurrentAnimationStack(lAnimStack);
+
+    ProcessNode(nif, iRoot, pScene, lAnimLayer, lSkeletonRoot, ctx);
     // Process meshes after navigating node tree to ensure bones are mapped
     ProcessMeshes(nif, iRoot, pScene, ctx);
 
@@ -585,23 +683,6 @@ void exportFBX( const NifModel * nif, const QModelIndex & index )
         DestroySdkObjects(lSdkManager, lResult);
         return;
     }
-
-    /*
-    if(lScene->GetGlobalSettings().GetSystemUnit() == FbxSystemUnit::cm)
-    {
-        const FbxSystemUnit::ConversionOptions lConversionOptions = {
-            true, // mConvertRrsNodes
-            true, // mConvertLimits
-            true, // mConvertClusters
-            true, // mConvertLightIntensity
-            true, // mConvertPhotometricLProperties
-            true  // mConvertCameraClipPlanes
-        };
-
-        // Convert the scene to meters using the defined options.
-        FbxSystemUnit::m.ConvertScene(lScene, lConversionOptions);
-    }
-    */
 
     // Save the scene.
     auto exportFile = QString( "%1/%2.fbx" ).arg( exportDir ).arg( QFileInfo(nif->getFilename()).baseName() ).toStdString();

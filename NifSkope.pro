@@ -443,8 +443,10 @@ win32 {
 }
 
 win32 {
-    # GL libs for Qt 5.5+
-    LIBS += -lopengl32 -lglu32 -lAdvapi32 -l$$PWD/lib/fbx/libfbxsdk
+    DEFINES += -DFBXSDK_SHARED
+    debug:LIBS += -l$$PWD/lib/fbx/libfbxsdk-mdd -l$$PWD/lib/fbx/alembic-mdd -l$$PWD/lib/fbx/libxml2-mdd -l$$PWD/lib/fbx/zlib-mdd
+    else:LIBS += -l$$PWD/lib/fbx/libfbxsdk-md -l$$PWD/lib/fbx/alembic-md -l$$PWD/lib/fbx/libxml2-md -l$$PWD/lib/fbx/zlib-md
+    LIBS += -lopengl32 -lglu32 -lAdvapi32
 }
 
 unix:!macx {

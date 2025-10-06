@@ -751,9 +751,6 @@ bool TransformInterpolator::update( const NifModel * nif, const QModelIndex & in
 
 bool TransformInterpolator::updateTransform( Transform & tm, float time )
 {
-    //const NifModel * nif = static_cast<const NifModel *>( iRotations.model() );
-    //if(nif && nif->getBlockNumber(iRotations) == 319)
-    //    __debugbreak();
     Controller::interpolate( tm.rotation, iRotations, time, lRotate );
     Controller::interpolate( tm.translation, iTranslations, time, lTrans );
     Controller::interpolate( tm.scale, iScales, time, lScale );

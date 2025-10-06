@@ -295,7 +295,7 @@ Eigen::Vector3d Matrix::toEulerXYZ()
         z = std::atan2(R_lh(1, 0), R_lh(0, 0));
     }
 
-    return Eigen::Vector3d(x, y, z);
+    return Eigen::Vector3d(x * (180.0 / PI), y * (180.0 / PI), z * (180.0 / PI));
 }
 
 
