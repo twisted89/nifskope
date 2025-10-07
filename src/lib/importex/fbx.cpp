@@ -139,6 +139,11 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                             auto animY = FbxAnimCurveKey(fbxTime, tval.y());
                             auto animZ = FbxAnimCurveKey(fbxTime, tval.z());
 
+                            //Fix for constant interpolation causing issues with animations
+                            animX.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
+                            animY.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
+                            animZ.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
+
                             lTranslationCurveX->KeyAdd(fbxTime, animX);
                             lTranslationCurveY->KeyAdd(fbxTime, animY);
                             lTranslationCurveZ->KeyAdd(fbxTime, animZ);
@@ -169,6 +174,11 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                             auto animX = FbxAnimCurveKey(fbxTime, lEuler.x());
                             auto animY = FbxAnimCurveKey(fbxTime, lEuler.y());
                             auto animZ = FbxAnimCurveKey(fbxTime, lEuler.z());
+
+                            //Fix for constant interpolation causing issues with animations
+                            animX.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
+                            animY.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
+                            animZ.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
 
                             lRotationCurveX->KeyAdd(fbxTime, animX);
                             lRotationCurveY->KeyAdd(fbxTime, animY);
