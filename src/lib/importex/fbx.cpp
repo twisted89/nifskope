@@ -20,10 +20,15 @@
 
 #define tr( x ) QApplication::tr( x )
 
+struct TEXTURE_INSTANCE {
+    std::string texture;
+    bool hasTransparency;
+};
+
 struct FBX_ExportContext {
     std::string ExportPath;
     std::map<uint, FbxNode*> NodeMap;
-    std::map<uint, std::vector<std::string>> textureMap;
+    std::map<uint, std::vector<TEXTURE_INSTANCE>> textureMap;
     std::map<uint, FbxSurfacePhong*> materialMap;
     FbxArray<FbxNode*> NodeLinksArray;
 };
@@ -122,6 +127,8 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                     //auto iVisibilities = nif->getIndex( iBlock, "Visibilities" );
 
                     QModelIndex tkeys = nif->getIndex( iTranslations, "Keys" );
+                    auto translationKeyType = nif->get<uint>( iTranslations, "Interpolation" );
+                    auto rotationKeyType = nif->get<uint>( iRotations, "Rotation Type" );
 
                     if(tkeys.isValid())
                     {
@@ -130,24 +137,95 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                         FbxAnimCurve* lTranslationCurveY = node->LclTranslation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Y, true);
                         FbxAnimCurve* lTranslationCurveZ = node->LclTranslation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Z, true);
 
+                        lTranslationCurveX->KeyModifyBegin();
+                        lTranslationCurveY->KeyModifyBegin();
+                        lTranslationCurveZ->KeyModifyBegin();
+
                         for ( int tindex = 0; tindex < nif->rowCount( tkeys ); tindex++ ) {
                             QModelIndex tkey = tkeys.child( tindex, 0 );
                             auto tval = nif->get<Vector3>( tkey, "Value" ).toYUp();
-                            FbxTime fbxTime(nif->get<float>( tkey, "Time" ) * FBXSDK_TC_SECOND);
+                            float currentTime = nif->get<float>( tkey, "Time" );
+                            FbxTime fbxTime(currentTime * FBXSDK_TC_SECOND);
 
-                            auto animX = FbxAnimCurveKey(fbxTime, tval.x());
-                            auto animY = FbxAnimCurveKey(fbxTime, tval.y());
-                            auto animZ = FbxAnimCurveKey(fbxTime, tval.z());
+                            int xIndex = lTranslationCurveX->KeyAdd(fbxTime);
+                            int yIndex = lTranslationCurveY->KeyAdd(fbxTime);
+                            int zIndex = lTranslationCurveZ->KeyAdd(fbxTime);
 
-                            //Fix for constant interpolation causing issues with animations
-                            animX.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
-                            animY.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
-                            animZ.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
+                            lTranslationCurveX->KeySetValue(xIndex, tval.x());
+                            lTranslationCurveY->KeySetValue(yIndex, tval.y());
+                            lTranslationCurveZ->KeySetValue(zIndex, tval.z());
 
-                            lTranslationCurveX->KeyAdd(fbxTime, animX);
-                            lTranslationCurveY->KeyAdd(fbxTime, animY);
-                            lTranslationCurveZ->KeyAdd(fbxTime, animZ);
+                            if(translationKeyType == 1) //Linear
+                            {
+                                lTranslationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                lTranslationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                lTranslationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationLinear);
+                            }
+                            else //Bezier
+                            {
+                                auto outTan = nif->get<Vector3>( tkey, "OutTan" );
+                                auto inTan = nif->get<Vector3>( tkey, "InTan" );
+
+                                // Sample the Bézier curve between this key and the next
+                                if (tindex + 1 < nif->rowCount(tkeys)) {
+                                    QModelIndex nextKey = tkeys.child(tindex + 1, 0);
+                                    float nextTime = nif->get<float>(nextKey, "Time");
+                                    float deltaTime = nextTime - currentTime;
+
+                                    // Read the precomputed A and B coefficients directly from the NIF
+                                    Vector3 m_A = nif->get<Vector3>(tkey, "m_A");
+                                    Vector3 m_B = nif->get<Vector3>(tkey, "m_B");
+                                    Vector3 currentPos = nif->get<Vector3>(tkey, "Value");
+
+                                    // Sample at 100ms intervals (0.1 seconds)
+                                    const float sampleInterval = 0.1f;
+                                    int numSamples = static_cast<int>(deltaTime / sampleInterval);
+
+                                    // Always include the current keyframe with linear interpolation
+                                    lTranslationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                    lTranslationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                    lTranslationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationCubic);
+
+                                    // Create intermediate samples using the Bézier interpolation formula
+                                    for (int s = 1; s < numSamples; s++) {
+                                        float sampleTime = currentTime + (s * sampleInterval);
+                                        // Normalize time to [0, 1] range for this segment
+                                        float t = (sampleTime - currentTime) / deltaTime;
+
+                                        // Use NiBezPosKey::Interpolate formula:
+                                        // P(t) = P0 + (OutTan + (A + B*t)*t)*t
+                                        Vector3 interpPos = currentPos + (outTan + (m_A + m_B * t) * t) * t;
+
+                                        // Convert to Y-up
+                                        auto interpPosYUp = interpPos.toYUp();
+
+                                        // Add the sampled keyframe
+                                        FbxTime sampleFbxTime(sampleTime * FBXSDK_TC_SECOND);
+
+                                        int sxIndex = lTranslationCurveX->KeyAdd(sampleFbxTime);
+                                        int syIndex = lTranslationCurveY->KeyAdd(sampleFbxTime);
+                                        int szIndex = lTranslationCurveZ->KeyAdd(sampleFbxTime);
+
+                                        lTranslationCurveX->KeySetValue(sxIndex, interpPosYUp.x());
+                                        lTranslationCurveY->KeySetValue(syIndex, interpPosYUp.y());
+                                        lTranslationCurveZ->KeySetValue(szIndex, interpPosYUp.z());
+
+                                        lTranslationCurveX->KeySetInterpolation(sxIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                        lTranslationCurveY->KeySetInterpolation(syIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                        lTranslationCurveZ->KeySetInterpolation(szIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                    }
+                                } else {
+                                    // Last keyframe - just use linear interpolation
+                                    lTranslationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                    lTranslationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                    lTranslationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                }
+                            }
                         }
+
+                        lTranslationCurveX->KeyModifyEnd();
+                        lTranslationCurveY->KeyModifyEnd();
+                        lTranslationCurveZ->KeyModifyEnd();
                     }
 
 
@@ -159,31 +237,195 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                         FbxAnimCurve* lRotationCurveY = node->LclRotation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Y, true);
                         FbxAnimCurve* lRotationCurveZ = node->LclRotation.GetCurve(animLayer, FBXSDK_CURVENODE_COMPONENT_Z, true);
 
+                        lRotationCurveX->KeyModifyBegin();
+                        lRotationCurveY->KeyModifyBegin();
+                        lRotationCurveZ->KeyModifyBegin();
+
+                        // Track previous quaternion AND euler for continuity
+                        Quat prevQuat;
+                        bool hasPrevQuat = false;
+                        Eigen::Vector3d prevEuler(0, 0, 0);
+                        bool hasPrevEuler = false;
+
+                        // Helper lambda to unwrap Euler angles
+                        auto unwrapEuler = [](const Eigen::Vector3d& prev, Eigen::Vector3d& current) {
+                            // Unwrap each component to be continuous with previous
+                            for (int i = 0; i < 3; i++) {
+                                double diff = current[i] - prev[i];
+                                // If difference is > 180 degrees, we crossed a boundary
+                                if (diff > 180.0) {
+                                    current[i] -= 360.0;
+                                } else if (diff < -180.0) {
+                                    current[i] += 360.0;
+                                }
+                            }
+                        };
+
                         for ( int rindex = 0; rindex < nif->rowCount( rkeys ); rindex++ ) {
                             QModelIndex rkey = rkeys.child( rindex, 0 );
                             Quat rot = nif->get<Quat>( rkey, "Value" );
+                            float keyTime = nif->get<float>( rkey, "Time" );
 
-                            FbxTime fbxTime(nif->get<float>( rkey, "Time" ) * FBXSDK_TC_SECOND);
+                            // Ensure quaternion continuity - flip if needed to take shortest path
+                            if (hasPrevQuat) {
+                                float dot = Quat::dotproduct(prevQuat, rot);
+                                if (dot < 0.0f) {
+                                    // Flip quaternion to ensure shortest rotation path
+                                    rot[0] = -rot[0];
+                                    rot[1] = -rot[1];
+                                    rot[2] = -rot[2];
+                                    rot[3] = -rot[3];
+                                }
+                            }
+                            prevQuat = rot;
+                            hasPrevQuat = true;
 
-                            Matrix mtx;
-                            mtx.fromQuat(rot);
+                            FbxTime fbxTime(keyTime * FBXSDK_TC_SECOND);
 
-                            // Use the same coordinate transformation as the base transform
-                            auto lEuler = mtx.toEulerXYZ();
+                            // Convert quaternion to matrix, then use the same Z-up to Y-up conversion as toEulerXYZ
+                            Matrix rotMatrix;
+                            rotMatrix.fromQuat(rot);
 
-                            auto animX = FbxAnimCurveKey(fbxTime, lEuler.x());
-                            auto animY = FbxAnimCurveKey(fbxTime, lEuler.y());
-                            auto animZ = FbxAnimCurveKey(fbxTime, lEuler.z());
+                            // Use the toEulerXYZ function which handles coordinate system conversion
+                            Eigen::Vector3d euler = rotMatrix.toEulerXYZ();
 
-                            //Fix for constant interpolation causing issues with animations
-                            animX.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
-                            animY.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
-                            animZ.SetInterpolation(FbxAnimCurveDef::eInterpolationConstant);
+                            // Unwrap Euler angles to ensure continuity
+                            if (hasPrevEuler) {
+                                unwrapEuler(prevEuler, euler);
+                            }
+                            prevEuler = euler;
+                            hasPrevEuler = true;
 
-                            lRotationCurveX->KeyAdd(fbxTime, animX);
-                            lRotationCurveY->KeyAdd(fbxTime, animY);
-                            lRotationCurveZ->KeyAdd(fbxTime, animZ);
+                            if(rotationKeyType == 1) //Linear
+                            {
+                                int xIndex = lRotationCurveX->KeyAdd(fbxTime);
+                                int yIndex = lRotationCurveY->KeyAdd(fbxTime);
+                                int zIndex = lRotationCurveZ->KeyAdd(fbxTime);
+
+                                lRotationCurveX->KeySetValue(xIndex, euler.x());
+                                lRotationCurveY->KeySetValue(yIndex, euler.y());
+                                lRotationCurveZ->KeySetValue(zIndex, euler.z());
+
+                                lRotationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                lRotationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                lRotationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationLinear);
+                            }
+                            else if(rotationKeyType == 3) //TCB
+                            {
+                                // TCB uses Squad interpolation which FBX doesn't support directly
+                                // We need to sample the Squad curve and create intermediate keys
+
+                                // Add the main keyframe
+                                int xIndex = lRotationCurveX->KeyAdd(fbxTime);
+                                int yIndex = lRotationCurveY->KeyAdd(fbxTime);
+                                int zIndex = lRotationCurveZ->KeyAdd(fbxTime);
+
+                                lRotationCurveX->KeySetValue(xIndex, euler.x());
+                                lRotationCurveY->KeySetValue(yIndex, euler.y());
+                                lRotationCurveZ->KeySetValue(zIndex, euler.z());
+
+                                lRotationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                lRotationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                lRotationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationLinear);
+
+                                // Sample the Squad curve between this key and the next
+                                if (rindex + 1 < nif->rowCount( rkeys )) {
+                                    QModelIndex nextKey = rkeys.child( rindex + 1, 0 );
+                                    Quat nextRot = nif->get<Quat>( nextKey, "Value" );
+                                    Quat m_A = nif->get<Quat>( rkey, "A" );
+                                    Quat m_B = nif->get<Quat>( nextKey, "B" );
+
+                                    // Ensure continuity for control quaternions
+                                    if (Quat::dotproduct(rot, m_A) < 0.0f) {
+                                        m_A[0] = -m_A[0];
+                                        m_A[1] = -m_A[1];
+                                        m_A[2] = -m_A[2];
+                                        m_A[3] = -m_A[3];
+                                    }
+                                    if (Quat::dotproduct(rot, nextRot) < 0.0f) {
+                                        nextRot[0] = -nextRot[0];
+                                        nextRot[1] = -nextRot[1];
+                                        nextRot[2] = -nextRot[2];
+                                        nextRot[3] = -nextRot[3];
+                                    }
+                                    if (Quat::dotproduct(nextRot, m_B) < 0.0f) {
+                                        m_B[0] = -m_B[0];
+                                        m_B[1] = -m_B[1];
+                                        m_B[2] = -m_B[2];
+                                        m_B[3] = -m_B[3];
+                                    }
+
+                                    float nextTime = nif->get<float>( nextKey, "Time" );
+                                    float deltaTime = nextTime - keyTime;
+
+                                    // Sample Squad at intermediate points
+                                    const int numSamples = 4;
+                                    Quat prevSampleQuat = rot;
+
+                                    for (int s = 1; s < numSamples; s++) {
+                                        float t = static_cast<float>(s) / numSamples;
+                                        float sampleTime = keyTime + (deltaTime * t);
+
+                                        // Use Squad interpolation: Squad(t, p, a, b, q)
+                                        // This matches NiTCBRotKey::Interpolate implementation
+                                        Quat interpQuat = Quat::slerp(2.0f * t * (1.0f - t),
+                                                                      Quat::slerp(t, rot, nextRot),
+                                                                      Quat::slerp(t, m_A, m_B));
+
+                                        // Ensure continuity between samples
+                                        if (Quat::dotproduct(prevSampleQuat, interpQuat) < 0.0f) {
+                                            interpQuat[0] = -interpQuat[0];
+                                            interpQuat[1] = -interpQuat[1];
+                                            interpQuat[2] = -interpQuat[2];
+                                            interpQuat[3] = -interpQuat[3];
+                                        }
+                                        prevSampleQuat = interpQuat;
+
+                                        // Convert interpolated quaternion to Euler
+                                        Matrix interpMatrix;
+                                        interpMatrix.fromQuat(interpQuat);
+                                        Eigen::Vector3d interpEuler = interpMatrix.toEulerXYZ();
+
+                                        // Unwrap Euler angles for this sample
+                                        unwrapEuler(prevEuler, interpEuler);
+                                        prevEuler = interpEuler;
+
+                                        // Add intermediate key
+                                        FbxTime sampleFbxTime(sampleTime * FBXSDK_TC_SECOND);
+
+                                        int sxIndex = lRotationCurveX->KeyAdd(sampleFbxTime);
+                                        int syIndex = lRotationCurveY->KeyAdd(sampleFbxTime);
+                                        int szIndex = lRotationCurveZ->KeyAdd(sampleFbxTime);
+
+                                        lRotationCurveX->KeySetValue(sxIndex, interpEuler.x());
+                                        lRotationCurveY->KeySetValue(syIndex, interpEuler.y());
+                                        lRotationCurveZ->KeySetValue(szIndex, interpEuler.z());
+
+                                        lRotationCurveX->KeySetInterpolation(sxIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                        lRotationCurveY->KeySetInterpolation(syIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                        lRotationCurveZ->KeySetInterpolation(szIndex, FbxAnimCurveDef::eInterpolationLinear);
+                                    }
+                                }
+                            }
+                            else //Bezier or other cubic types
+                            {
+                                int xIndex = lRotationCurveX->KeyAdd(fbxTime);
+                                int yIndex = lRotationCurveY->KeyAdd(fbxTime);
+                                int zIndex = lRotationCurveZ->KeyAdd(fbxTime);
+
+                                lRotationCurveX->KeySetValue(xIndex, euler.x());
+                                lRotationCurveY->KeySetValue(yIndex, euler.y());
+                                lRotationCurveZ->KeySetValue(zIndex, euler.z());
+
+                                lRotationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                lRotationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationCubic);
+                                lRotationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationCubic);
+                            }
                         }
+
+                        lRotationCurveX->KeyModifyEnd();
+                        lRotationCurveY->KeyModifyEnd();
+                        lRotationCurveZ->KeyModifyEnd();
                     }
                 }
 
@@ -197,7 +439,7 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
             }
         }
         else if(nif->inherits( iBlock, "NiSkinCore" ) || nif->itemName( iBlock ) == "NiTriShape"
-                   || nif->inherits( iBlock, "NiTriShape" ))
+                 || nif->inherits( iBlock, "NiTriShape" ))
         {
             for ( const auto pl : nif->getLinkArray( iBlock, "Properties" ) ) {
 
@@ -228,7 +470,7 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                     // Add texture for diffuse channel
                     lMaterial->Diffuse           .Set(FbxDouble3(diffuse.red(), diffuse.green(), diffuse.blue()));
                     lMaterial->DiffuseFactor     .Set(1.);
-                    lMaterial->TransparencyFactor.Set(alpha);
+                    lMaterial->TransparencyFactor.Set(1.0 - alpha); // Invert: FBX uses opacity not transparency
                     lMaterial->ShadingModel      .Set("Phong");
                     lMaterial->Shininess         .Set(shininess);
                     lMaterial->Specular          .Set(FbxDouble3(specular.red(), specular.green(), specular.blue()));
@@ -239,11 +481,11 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
 
                 else if(nif->isNiBlock( ipBlock, "NiTextureProperty"))
                 {
-                    int textureCount = 1;
                     foreach ( const int cl, nif->getChildLinks( nif->getBlockNumber( ipBlock )) ) {
                         QModelIndex ciBlock = nif->getBlock( cl );
                         if(nif->isNiBlock( ciBlock, "NiImage"))
                         {
+                            std::string textureName = std::to_string(nif->getBlockNumber(ciBlock));
                             QModelIndex iImage = nif->getBlock( nif->getLink( ciBlock, "Image Data" ));
                             if(nif->getBlockName(iImage) == "NiRawImageData")
                             {
@@ -268,33 +510,46 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                                     continue;
                                 }
 
-                                if ( iPixelData.isValid() ) {
-                                    if ( QByteArray * pdata = nif->get<QByteArray *>( iPixelData.child(0, 0) ) ) {
+                                if(!std::filesystem::exists(ctx.ExportPath
+                                                             + "/Textures/"
+                                                             + textureName
+                                                             + ".png"))
+                                {
+                                    if ( iPixelData.isValid() ) {
+                                        if ( QByteArray * pdata = nif->get<QByteArray *>( iPixelData.child(0, 0) ) ) {
+                                            const std::string filename = ctx.ExportPath
+                                                                         + "/Textures/"
+                                                                         + textureName
+                                                                         + ".png";
 
-                                        std::string textureName = (blockName.empty() ? std::to_string(nif->getBlockNumber(iBlock)) : blockName) + "_" + std::to_string(textureCount++);
-                                        // Avoid overwriting existing textures
-                                        while(std::filesystem::exists(ctx.ExportPath
-                                                                       + "/Textures/"
-                                                                       + textureName
-                                                                       + ".png"))
-                                            textureName = (blockName.empty() ? std::to_string(nif->getBlockNumber(iBlock)) : blockName) + "_" + std::to_string(textureCount++);
-
-                                        ctx.textureMap[nif->getBlockNumber( iBlock )].push_back(textureName);
-                                        const std::string filename = ctx.ExportPath
-                                                                     + "/Textures/"
-                                                                     + textureName
-                                                                     + ".png";
-
-                                        // Save the image
-                                        stbi_write_png(filename.c_str(), width, height, components, pdata->data(), width * components);
+                                            // Save the image
+                                            stbi_write_png(filename.c_str(), width, height, components, pdata->data(), width * components);
+                                        }
                                     }
                                 }
+                                ctx.textureMap[nif->getBlockNumber( iBlock )].push_back(TEXTURE_INSTANCE {textureName, components == 4 });
+                                break;
                             }
                         }
                     }
                 }
 
             }
+        }
+        else if(nif->isNiBlock( iBlock, "NiCamera"))
+        {
+            FbxCamera* lCamera = FbxCamera::Create(scene, "GameCamera");
+            lCamera->ProjectionType.Set(FbxCamera::ePerspective);
+
+            auto nearPlane = nif->get<float>( iBlock, "Frustum Near");
+            auto farPlane = nif->get<float>( iBlock, "Frustum Far");
+
+            lCamera->NearPlane.Set(nearPlane);
+            lCamera->FarPlane.Set(100000.0);
+
+            parentnode->LclRotation.Set(FbxDouble3(-90, 0, -90));
+
+            parentnode->SetNodeAttribute(lCamera);
         }
     }
 }
@@ -459,7 +714,6 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                 }
 
                 FbxSkin* meshSkin = FbxSkin::Create(pScene, "");
-
                 QModelIndex idxSkinVertices = nif->getIndex( iBlock, "Skin Vertex Data" );
                 if ( idxSkinVertices.isValid() ) {
                     for ( int vindex = 0; vindex < nif->rowCount( idxSkinVertices ) && vindex < verts.count(); vindex++ ) {
@@ -468,7 +722,7 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                         {
                             auto instanceCount = nif->get<uint>( skinData, "Skin Vertex Count");
                             auto instanceArray = nif->getIndex( skinData, "data" );
-                            for(int i = 0; i < instanceCount; i++)
+                            for(unsigned int i = 0; i < instanceCount; i++)
                             {
                                 QModelIndex skinInstance = instanceArray.child( i, 0 );
                                 if(skinInstance.isValid())
@@ -519,9 +773,10 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
             auto textures = ctx.textureMap[nif->getBlockNumber( iBlock )];
             if(textures.size())
             {
-                auto textureName = textures.front();
-                std::string textureFilename = ctx.ExportPath + "/Textures/" + textureName + ".png";
+                auto textureInfo = textures.front();
+                std::string textureFilename = ctx.ExportPath + "/Textures/" + textureInfo.texture + ".png";
                 FbxSurfacePhong* lMaterial = ctx.materialMap[nif->getBlockNumber( iBlock )];
+                lMaterial->TransparencyFactor.Set(0.0); // Start with fully opaque
                 if (lMaterial)
                 {
                     FbxLayer* lLayer = mesh->GetLayer(0);
@@ -546,7 +801,7 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                     // Save the material on the layer
                     lLayer->SetMaterials(lLayerElementMaterial);
 
-                    FbxFileTexture* lTexture = FbxFileTexture::Create(pScene, textureName.c_str());
+                    FbxFileTexture* lTexture = FbxFileTexture::Create(pScene, textureInfo.texture.c_str());
 
                     // Set texture properties.
                     lTexture->SetFileName(textureFilename.c_str()); // Resource file is in current directory.
@@ -562,10 +817,48 @@ void ProcessMeshes(const NifModel * nif, const QModelIndex & iNode, FbxScene* pS
                     // Connect the texture to the corresponding property of the material
                     lMaterial->Diffuse.ConnectSrcObject(lTexture);
 
+                    FbxFileTexture* tTexture = nullptr;
+                    // If the texture has an alpha channel, set up proper alpha blending
+                    if(textureInfo.hasTransparency)
+                    {
+                        // Don't create a separate alpha texture - instead, let the diffuse texture handle transparency
+                        // Remove the SetAlphaSource call on diffuse texture to let it use RGB channels normally
+
+                        // For Maya, we need to connect the same texture file to the transparency channel
+                        // but configure it to read the alpha channel
+                        tTexture = FbxFileTexture::Create(pScene, (textureInfo.texture + "_opacity").c_str());
+                        tTexture->SetFileName(textureFilename.c_str());
+                        tTexture->SetTextureUse(FbxTexture::eStandard);
+                        tTexture->SetMappingType(FbxTexture::eUV);
+                        tTexture->SetSwapUV(false);
+                        tTexture->SetMaterialUse(FbxFileTexture::eModelMaterial);
+
+                        // This is the key: use eRGBIntensity to read the alpha channel from the PNG
+                        // Don't use eBlack - that treats black pixels as transparent
+                        tTexture->SetAlphaSource(FbxTexture::EAlphaSource::eRGBIntensity);
+
+                        tTexture->SetTranslation(0.0, 0.0);
+                        tTexture->SetScale(1.0, 1.0);
+                        tTexture->SetRotation(0.0, 0.0);
+
+                        // Connect to TransparentColor for Maya compatibility
+                        lMaterial->TransparentColor.ConnectSrcObject(tTexture);
+
+                        // Set base transparency to maximum so texture controls it
+                        lMaterial->TransparencyFactor.Set(1.0);
+                    }
+                    else
+                    {
+                        // No alpha channel - keep fully opaque
+                    }
+
+
                     FbxLayerElementTexture* lTextureElement = FbxLayerElementTexture::Create(mesh, "Diffuse Texture");
                     lTextureElement->SetMappingMode(FbxLayerElement::eByControlPoint); // Use control point mapping for direct access.
                     lTextureElement->SetReferenceMode(FbxLayerElement::eDirect); // Direct reference to the textures.
                     lTextureElement->GetDirectArray().Add(lTexture);
+                    if(tTexture)
+                        lTextureElement->GetDirectArray().Add(tTexture);
                     lLayer->SetTextures(FbxLayerElement::EType::eTextureDiffuse, lTextureElement);
 
                     // Create and configure the UV element for direct index access.
@@ -677,8 +970,7 @@ void exportFBX( const NifModel * nif, const QModelIndex & index )
         return;
 
     ctx.ExportPath = exportDir.toStdString();
-    std::error_code errCode;
-    std::filesystem::remove_all(exportDir.toStdString() + "/Textures", errCode);
+
     CreateDirectoryRecursive(exportDir.toStdString() + "/Textures");
 
     // Prepare the FBX SDK.

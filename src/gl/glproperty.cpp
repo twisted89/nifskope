@@ -62,6 +62,8 @@ Property * Property::create( Scene * scene, const NifModel * nif, const QModelIn
         property = new TexturingProperty( scene, index );
     } else if ( nif->isNiBlock( index, "NiTextureProperty" ) ) {
         property = new TextureProperty( scene, index );
+    } else if ( nif->isNiBlock( index, "NiMultiTextureProperty" ) ) {
+        property = new TextureProperty( scene, index );
     } else if ( nif->isNiBlock( index, "NiTextureModeProperty" ) ) {
         property = new TexturingModeProperty( scene, index );
     } else if ( nif->isNiBlock( index, "NiMaterialProperty" ) ) {

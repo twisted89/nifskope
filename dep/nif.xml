@@ -2239,16 +2239,7 @@
     <niobject name="NiObject" abstract="1">
         Abstract object type.
     </niobject>
-
-    <niobject name="Ni3dsAlphaAnimator" abstract="0" inherit="NiObject">
-        Unknown.
-        <add name="Unknown 1" type="byte" arr1="40">Unknown.</add>
-        <add name="Parent" type="Ref" template="NiObject">The parent?</add>
-        <add name="Num 1" type="uint">Unknown.</add>
-        <add name="Num 2" type="uint">Unknown.</add>
-        <add name="Unknown 2" type="uint" arr1="Num 1" arr2="Num 2" arr3="2">Unknown.</add>
-    </niobject>
-    
+   
     <niobject name="Ni3dsColorAnimator" abstract="0" inherit="NiObject">
         Unknown!
         <add name="Unknown 1" type="byte" arr1="184">Unknown.</add>
@@ -2714,8 +2705,9 @@
         <add name="Name" type="string">Name of this controllable object, used to refer to the object in .kf files.</add>
         <add name="Has Old Extra Data" type="bool" ver2="2.3">Extra data for pre-3.0 versions.</add>
         <add name="Old Extra Prop Name" cond="Has Old Extra Data" ver2="2.3" type="string">(=NiStringExtraData)</add>
+        <add name="Old Extra Id" cond="Has Old Extra Data" ver2="2.3" type="uint"></add>
         <add name="Old Extra Internal Id" cond="Has Old Extra Data" ver2="2.3" type="uint">ref</add>
-        <add name="Old Extra String" cond="Has Old Extra Data" ver2="2.3" type="string">Extra string data.</add>
+        <add name="Old Extra String" cond="Has Old Extra Data" ver2="2.0" type="string">Extra string data.</add>
         <add name="Extra Data" type="Ref" template="NiExtraData" ver1="3.0" ver2="4.2.2.0">Extra data object index. (The first in a chain)</add>
         <add name="Num Extra Data List" type="uint" ver1="10.0.1.0">The number of Extra Data objects referenced through the list.</add>
         <add name="Extra Data List" type="Ref" template="NiExtraData" arr1="Num Extra Data List" ver1="10.0.1.0">List of extra data indices.</add>
@@ -2801,20 +2793,31 @@
     <niobject name="NiDynamicEffect" abstract="1" inherit="NiAVObject">
         Abstract base class for dynamic effects such as NiLights or projected texture effects.
         <add name="Switch State" type="bool" default="1" ver1="10.1.0.106" vercond="User Version 2 &lt; 130">If true, then the dynamic effect is applied to affected nodes during rendering.</add>
-        <add name="Num Affected Nodes" type="uint" ver2="4.0.0.2" />
-        <add name="Affected Nodes" type="Ptr" template="NiNode" arr1="Num Affected Nodes" ver2="3.3.0.13">If a node appears in this list, then its entire subtree will be affected by the effect.</add>
+        <add name="Num Affected Nodes" type="uint" ver1="3.0" ver2="4.0.0.2" />
+        <add name="Affected Nodes" type="Ptr" template="NiNode" arr1="Num Affected Nodes" ver1="3.0"  ver2="3.3.0.13">If a node appears in this list, then its entire subtree will be affected by the effect.</add>
         <add name="Affected Node Pointers" type="uint" arr1="Num Affected Nodes" ver1="4.0.0.0" ver2="4.0.0.2">As of 4.0 the pointer hash is no longer stored alongside each NiObject on disk, yet this node list still refers to the pointer hashes. Cannot leave the type as Ptr because the link will be invalid.</add>
         <add name="Num Affected Nodes" type="uint" ver1="10.1.0.0" vercond="User Version 2 &lt; 130" />
         <add name="Affected Nodes" type="Ptr" template="NiNode" arr1="Num Affected Nodes" ver1="10.1.0.0" vercond="User Version 2 &lt; 130">If a node appears in this list, then its entire subtree will be affected by the effect.</add>
     </niobject>
 
-    <niobject name="NiLight" abstract="1" inherit="NiDynamicEffect">
+    <niobject name="NiLight" abstract="0" inherit="NiDynamicEffect">
         Abstract base class that represents light sources in a scene graph.
         For Bethesda Stream 130 (FO4), NiLight now directly inherits from NiAVObject.
+        <add name="Location" type="Vector3" ver2="3.0"></add>
+        <add name="Direction" type="Vector3" ver2="3.0"></add>
+        <add name="Switch State" type="byte" default="1" ver2="3.0">If true, then the dynamic effect is applied to affected nodes during rendering.</add>
+        <add name="Spot Angle" type="float" ver2="3.0" default="0"></add>
+        <add name="Spot Exponent" type="float" ver2="3.0" default="0"></add>
         <add name="Dimmer" type="float" default="1.0">Scales the overall brightness of all light components.</add>
         <add name="Ambient Color" type="Color3" default="0.0, 0.0, 0.0" />
         <add name="Diffuse Color" type="Color3" default="0.0, 0.0, 0.0" />
         <add name="Specular Color" type="Color3" default="0.0, 0.0, 0.0" />
+        <add name="Attenuation Distance" type="float" ver2="3.0" default="0"></add>
+        <add name="Attenuation Curve" type="float" ver2="3.0" default="0"></add>
+        <add name="Attenuation" type="byte" ver2="3.0" default="0"></add>
+        <add name="Light Type" type="uint" ver2="3.0" default="0"></add>
+        <add name="UnknownCount" type="uint" ver2="3.0" default="0"></add>
+        <add name="UnknownInt" type="uint" ver2="3.0" arr1="UnknownCount" cond="UnknownCount > 0">Unknown.</add>
     </niobject>
 
     <niobject name="NiProperty" abstract="1" inherit="NiObjectNET">
@@ -3520,6 +3523,10 @@
 
     <niobject name="NiCamera" abstract="0" inherit="NiAVObject">
         Camera object.
+        <add name="ViewPlane Location" type="Vector3" ver2="2.3"></add>
+        <add name="ViewPlane Normal" type="Vector3" ver2="2.3"></add>
+        <add name="ViewPlane Up" type="Vector3" ver2="2.3"></add>
+        <add name="ViewPlane Right" type="Vector3" ver2="2.3"></add>
         <add name="Camera Flags" type="ushort" ver1="10.1.0.0">Obsolete flags.</add>
         <add name="Frustum Left" type="float">Frustrum left.</add>
         <add name="Frustum Right" type="float">Frustrum right.</add>
@@ -3532,11 +3539,18 @@
         <add name="Viewport Right" type="float">Viewport right.</add>
         <add name="Viewport Top" type="float">Viewport top.</add>
         <add name="Viewport Bottom" type="float">Viewport bottom.</add>
+        <add name="Use Sorting" type="byte" ver2="2.3"></add>
+        <add name="SortingState" type="byte" ver2="2.3"></add>
         <add name="LOD Adjust" type="float">Level of detail adjust.</add>
         <add name="Scene" type="Ref" template="NiAVObject" />
-        <add name="Num Screen Polygons" type="uint" default="0">Deprecated. Array is always zero length on disk write.</add>
+        <add name="Scene2" type="Ref" template="NiAVObject" />
+        <add name="Unknown count 1" type="uint" ver2="2.3">Unknown.</add>
+        <add name="Unknown ref 1" type="uint" ver2="2.3" arr1="Unknown count 1">Unknown.</add>
+        <add name="Unknown count 2" type="uint" ver2="2.3">Unknown.</add>
+        <add name="Unknown ref 2" type="uint" ver2="2.3" arr1="Unknown count 2">Unknown.</add>
+        <add name="Num Screen Polygons" type="uint" default="0" ver1="3.0">Deprecated. Array is always zero length on disk write.</add>
         <add name="Num Screen Textures" type="uint" default="0" ver1="4.2.1.0">Deprecated. Array is always zero length on disk write.</add>
-        <add name="Unknown Int 3" type="uint" ver2="3.1">Unknown.</add>
+        <add name="Unknown Int 3" type="uint" ver1="3.0" ver2="3.1">Unknown.</add>
     </niobject>
 
     <niobject name="NiColorData" abstract="0" inherit="NiObject">
@@ -3755,8 +3769,8 @@
         <add name="Num Effects" type="uint" vercond="User Version 2 &lt; 130">The number of references to effect objects that follow.</add>
         <add name="Effects" type="Ref" template="NiDynamicEffect" arr1="Num Effects" vercond="User Version 2 &lt; 130">List of node effects. ADynamicEffect?</add>
     </niobject>
-    
-    <niobject name="Ni3dsAnimationCore" abstract="0" inherit="NiNode">
+
+    <compound name="Ni3dsAnimationCore">
         <add name="Animation Type" type="AnimationCoreType"></add>
         <add name="Enabled" type="byte"></add>
         <add name="Running" type="byte"></add>
@@ -3768,7 +3782,7 @@
         <add name="Start Time" type="float"></add>
         <add name="LoKeyTime" type="float"></add>
         <add name="HiKeyTime" type="float"></add>
-    </niobject>
+    </compound>
     
     <compound name="NiFloatKey">
          <add name="Time" type="float"/>       
@@ -3816,7 +3830,7 @@
         <add name="Num Float Keys" type="uint" />
         <add name="Float Key Type" type="ScaleKeyType" cond="Num Float Keys != 0" />
         <add name="Keys" type="NiLinFloatKey" arr1="Num Float Keys" cond="Float Key Type == 1" />
-        <add name="Keys" type="NiBezFloatKey" rr1="Num Float Keys" cond="Float Key Type == 2" />
+        <add name="Keys" type="NiBezFloatKey" arr1="Num Float Keys" cond="Float Key Type == 2" />
         <add name="Keys" type="NiTCBFloatKey" arr1="Num Float Keys" cond="Float Key Type == 3" />
         <add name="Keys" type="NiMorphKey" arr1="Num Float Keys" cond="Float Key Type == 4" />
         <add name="Keys" type="NiBaryMorphKey" arr1="Num Float Keys" cond="Float Key Type == 5" />
@@ -3894,10 +3908,10 @@
     <compound name="NiBezPosKey">
          <add name="Time" type="float" />       
          <add name="Value" type="Vector3" />
-         <add name="Unknown 1" type="Vector3" />
-         <add name="Unknown 2" type="Vector3" />
-         <add name="Unknown 3" type="Vector3" />
-         <add name="Unknown 4" type="Vector3" />
+         <add name="InTan" type="Vector3" />
+         <add name="OutTan" type="Vector3" />
+         <add name="m_A" type="Vector3" />
+         <add name="m_B" type="Vector3" />
     </compound>
     
     <compound name="NiTCBPosKey">
@@ -3926,7 +3940,7 @@
         <add name="Num Scale Keys" type="uint" />
         <add name="Scale Key Type" type="ScaleKeyType" cond="Num Scale Keys != 0" />
         <add name="Keys" type="NiLinFloatKey" arr1="Num Scale Keys" cond="Scale Key Type == 1" />
-        <add name="Keys" type="NiBezFloatKey" rr1="Num Scale Keys" cond="Scale Key Type == 2" />
+        <add name="Keys" type="NiBezFloatKey" arr1="Num Scale Keys" cond="Scale Key Type == 2" />
         <add name="Keys" type="NiTCBFloatKey" arr1="Num Scale Keys" cond="Scale Key Type == 3" />
         <add name="Keys" type="NiMorphKey" arr1="Num Scale Keys" cond="Scale Key Type == 4" />
         <add name="Keys" type="NiBaryMorphKey" arr1="Num Scale Keys" cond="Scale Key Type == 5" />
@@ -3940,11 +3954,18 @@
         <add name="Visibility Keys" type="Key" arg="1" template="byte" arr1="Num Visibility Keys" />
     </compound>
         
-    <niobject name="Ni3dsAnimationNode" abstract="0" inherit="Ni3dsAnimationCore">
+    <niobject name="Ni3dsAnimationNode" abstract="0" inherit="NiNode">
+        <add name="Core" type="Ni3dsAnimationCore">Animation Core</add>
         <add name="Rotations" type="NiRotData">Rotation Data</add>
         <add name="Translations" type="NiPosData">Position Data</add>
         <add name="Scales" type="NiScaleData">Scale Data</add>
         <add name="Visibilities" type="NiVisData">Visibility Data</add>
+    </niobject>
+    
+    <niobject name="Ni3dsAlphaAnimator" abstract="0" inherit="NiObjectNET">
+        <add name="Core" type="Ni3dsAnimationCore">Animation Core</add>
+        <add name="Material" type="Ref" template="NiMaterialProperty">Material Property</add>
+        <add name="Visibility Keys" type="NiFloatKeyArray" />
     </niobject>
     
     <niobject name="Ni3dsBone" abstract="0" inherit="Ni3dsAnimationNode">
@@ -3997,6 +4018,7 @@
         01 ROTATE_ABOUT_UP
         10 RIGID_FACE_CAMERA
         11 ALWAYS_FACE_CENTER
+        <add name="Billboard Mode" type="uint" ver2="2.3">The way the billboard will react to the camera.</add>
         <add name="Billboard Mode" type="BillboardMode" ver1="10.1.0.0">The way the billboard will react to the camera.</add>
     </niobject>
 
@@ -4797,44 +4819,53 @@
 
     <niobject name="NiTexturingProperty" abstract="0" inherit="NiProperty">
         Describes how a fragment shader should be configured for a given piece of geometry.
-        <add name="Flags" type="Flags" ver2="10.0.1.2">Property flags.</add>
+        <add name="Flags" type="Flags" ver1="3.0" ver2="10.0.1.2">Property flags.</add>
         <add name="Flags" type="Flags" ver1="20.1.0.2">Property flags.</add>
         <add name="Apply Mode" type="ApplyMode" default="APPLY_MODULATE" ver1="3.3.0.13" ver2="20.1.0.1">Determines how the texture will be applied.  Seems to have special functions in Oblivion.</add>
-        <add name="Texture Count" type="uint" default="7">Number of textures.</add>
-        <add name="Has Base Texture" type="bool">Do we have a base texture?</add>
-        <add name="Base Texture" type="TexDesc" cond="Has Base Texture">The base texture.</add>
-        <add name="Has Dark Texture" type="bool">Do we have a dark texture?</add>
-        <add name="Dark Texture" type="TexDesc" cond="Has Dark Texture">The dark texture.</add>
-        <add name="Has Detail Texture" type="bool">Do we have a detail texture?</add>
-        <add name="Detail Texture" type="TexDesc" cond="Has Detail Texture">The detail texture.</add>
-        <add name="Has Gloss Texture" type="bool">Do we have a gloss texture?</add>
-        <add name="Gloss Texture" type="TexDesc" cond="Has Gloss Texture">The gloss texture.</add>
-        <add name="Has Glow Texture" type="bool">Do we have a glow texture?</add>
-        <add name="Glow Texture" type="TexDesc" cond="Has Glow Texture">The glowing texture.</add>
+        <add name="Texture Count" type="uint" ver1="3.0" default="7">Number of textures.</add>
+        <add name="Has Base Texture" type="bool" ver1="3.0">Do we have a base texture?</add>
+        <add name="Base Texture" type="TexDesc" ver1="3.0" cond="Has Base Texture">The base texture.</add>
+        <add name="Has Dark Texture" type="bool" ver1="3.0">Do we have a dark texture?</add>
+        <add name="Dark Texture" type="TexDesc" ver1="3.0" cond="Has Dark Texture">The dark texture.</add>
+        <add name="Has Detail Texture" type="bool" ver1="3.0">Do we have a detail texture?</add>
+        <add name="Detail Texture" type="TexDesc" ver1="3.0" cond="Has Detail Texture">The detail texture.</add>
+        <add name="Has Gloss Texture" type="bool" ver1="3.0">Do we have a gloss texture?</add>
+        <add name="Gloss Texture" type="TexDesc" ver1="3.0" cond="Has Gloss Texture">The gloss texture.</add>
+        <add name="Has Glow Texture" type="bool" ver1="3.0">Do we have a glow texture?</add>
+        <add name="Glow Texture" type="TexDesc" ver1="3.0" cond="Has Glow Texture">The glowing texture.</add>
         <add name="Has Bump Map Texture" type="bool" ver1="3.3.0.13" cond="Texture Count &gt; 5">Do we have a bump map texture?</add>
-        <add name="Bump Map Texture" type="TexDesc" cond="Has Bump Map Texture">The bump map texture.</add>
-        <add name="Bump Map Luma Scale" type="float" cond="Has Bump Map Texture" />
-        <add name="Bump Map Luma Offset" type="float" cond="Has Bump Map Texture" />
-        <add name="Bump Map Matrix" type="Matrix22" cond="Has Bump Map Texture" />
+        <add name="Bump Map Texture" type="TexDesc" ver1="3.0" cond="Has Bump Map Texture">The bump map texture.</add>
+        <add name="Bump Map Luma Scale" type="float" ver1="3.0" cond="Has Bump Map Texture" />
+        <add name="Bump Map Luma Offset" type="float" ver1="3.0" cond="Has Bump Map Texture" />
+        <add name="Bump Map Matrix" type="Matrix22" ver1="3.0" cond="Has Bump Map Texture" />
         <add name="Has Normal Texture" type="bool" cond="Texture Count &gt; 6" ver1="20.2.0.5">Do we have a normal texture?</add>
-        <add name="Normal Texture" type="TexDesc" cond="Has Normal Texture">Normal texture.</add>
+        <add name="Normal Texture" type="TexDesc" ver1="3.0" cond="Has Normal Texture">Normal texture.</add>
         <add name="Has Parallax Texture" type="bool" cond="Texture Count &gt; 7" ver1="20.2.0.5" />
-        <add name="Parallax Texture" type="TexDesc" cond="Has Parallax Texture" />
-        <add name="Parallax Offset" type="float" cond="Has Parallax Texture" />
-        <add name="Has Decal 0 Texture" type="bool" cond="Texture Count &gt; 6" ver2="20.2.0.4">Do we have a decal 0 texture?</add>
+        <add name="Parallax Texture" type="TexDesc" ver1="3.0" cond="Has Parallax Texture" />
+        <add name="Parallax Offset" type="float" ver1="3.0" cond="Has Parallax Texture" />
+        <add name="Has Decal 0 Texture" type="bool" cond="Texture Count &gt; 6" ver1="3.0" ver2="20.2.0.4">Do we have a decal 0 texture?</add>
         <add name="Has Decal 0 Texture" type="bool" cond="Texture Count &gt; 8" ver1="20.2.0.5">Do we have a decal 0 texture?</add>
-        <add name="Decal 0 Texture" type="TexDesc" cond="Has Decal 0 Texture">The decal texture.</add>
-        <add name="Has Decal 1 Texture" type="bool" cond="Texture Count &gt; 7" ver2="20.2.0.4">Do we have a decal 1 texture?</add>
+        <add name="Decal 0 Texture" type="TexDesc" cond="Has Decal 0 Texture" ver1="3.0">The decal texture.</add>
+        <add name="Has Decal 1 Texture" type="bool" cond="Texture Count &gt; 7" ver1="3.0" ver2="20.2.0.4">Do we have a decal 1 texture?</add>
         <add name="Has Decal 1 Texture" type="bool" cond="Texture Count &gt; 9" ver1="20.2.0.5">Do we have a decal 1 texture?</add>
-        <add name="Decal 1 Texture" type="TexDesc" cond="Has Decal 1 Texture">Another decal texture.</add>
-        <add name="Has Decal 2 Texture" type="bool" cond="Texture Count &gt; 8" ver2="20.2.0.4">Do we have a decal 2 texture?</add>
+        <add name="Decal 1 Texture" type="TexDesc" cond="Has Decal 1 Texture" ver1="3.0">Another decal texture.</add>
+        <add name="Has Decal 2 Texture" type="bool" cond="Texture Count &gt; 8" ver1="3.0" ver2="20.2.0.4">Do we have a decal 2 texture?</add>
         <add name="Has Decal 2 Texture" type="bool" cond="Texture Count &gt; 10" ver1="20.2.0.5">Do we have a decal 2 texture?</add>
-        <add name="Decal 2 Texture" type="TexDesc" cond="Has Decal 2 Texture">Another decal texture.</add>
-        <add name="Has Decal 3 Texture" type="bool" cond="Texture Count &gt; 9" ver2="20.2.0.4">Do we have a decal 3 texture?</add>
+        <add name="Decal 2 Texture" type="TexDesc" cond="Has Decal 2 Texture" ver1="3.0">Another decal texture.</add>
+        <add name="Has Decal 3 Texture" type="bool" cond="Texture Count &gt; 9" ver1="3.0" ver2="20.2.0.4">Do we have a decal 3 texture?</add>
         <add name="Has Decal 3 Texture" type="bool" cond="Texture Count &gt; 11" ver1="20.2.0.5">Do we have a decal 3 texture?</add>
-        <add name="Decal 3 Texture" type="TexDesc" cond="Has Decal 3 Texture">Another decal texture. Who knows the limit.</add>
+        <add name="Decal 3 Texture" type="TexDesc" cond="Has Decal 3 Texture" ver1="3.0">Another decal texture. Who knows the limit.</add>
         <add name="Num Shader Textures" type="uint" ver1="10.0.1.0">Number of Shader textures that follow.</add>
         <add name="Shader Textures" type="ShaderTexDesc" arr1="Num Shader Textures" ver1="10.0.1.0">Shader textures.</add>
+
+        <add name="Texture Count" type="uint" ver2="2.3" default="0">Number of textures.</add>
+        <add name="Textures" type="Ref" template="NiImage" arr1="Texture Count" ver2="2.3">Link to the texture images</add>
+        <add name="Combine Mode Count" type="uint" ver2="2.3" default="0">Count of Combine modes</add>
+        <add name="Combine Modes" type="uint" arr1="Combine Mode Count" ver2="2.3">Combine modes</add>
+        <add name="Clamp Mode Count" type="uint" ver2="2.3" default="0">Count of Clamp modes</add>
+        <add name="Clamp Modes" type="uint" arr1="Clamp Mode Count" ver2="2.3">Clamp modes</add>
+        <add name="Filter Mode Count" type="uint" ver2="2.3" default="0">Count of Filter modes</add>
+        <add name="Filter Modes" type="uint" arr1="Filter Mode Count" ver2="2.3">Filter modes</add>
     </niobject>
 
     <niobject name="NiMultiTextureProperty" abstract="0" inherit="NiTexturingProperty" />
