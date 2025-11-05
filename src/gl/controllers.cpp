@@ -1201,21 +1201,25 @@ void AnimationController::setInterpolator(const QModelIndex &idx)
 
 bool AnimationController::update( const NifModel * nif, const QModelIndex & index )
 {
-    active = nif->itemName( iBlock ) == "Ni3dsBone"; //nif->get<byte>( iBlock, "Running" );
-    start = nif->get<float>( iBlock, "Start Time" );
-    hiKeyTime = nif->get<float>( iBlock, "HiKeyTime" );
-    lowKeyTime = nif->get<float>( iBlock, "LoKeyTime" );
-    stop = hiKeyTime - lowKeyTime;
-    phase = nif->get<float>( iBlock, "Phase" );
-    frequency = nif->get<float>( iBlock, "Frequency" );
+    QModelIndex animationCore = nif->getIndex( index, "Core" );
+    if(animationCore.isValid())
+    {
+        active = nif->itemName( iBlock ) == "Ni3dsBone" || nif->itemName(iBlock) == "Ni3dsAnimationNode"; //nif->get<byte>( iBlock, "Running" );
+        start = nif->get<float>( animationCore, "Start Time" );
+        hiKeyTime = nif->get<float>( animationCore, "HiKeyTime" );
+        lowKeyTime = nif->get<float>( animationCore, "LoKeyTime" );
+        stop = hiKeyTime - lowKeyTime;
+        phase = nif->get<float>( animationCore, "Phase" );
+        frequency = nif->get<float>( animationCore, "Frequency" );
 
-    if(!interpolator) {
-        iInterpolator = iBlock;
-        interpolator = new TransformInterpolator( this );
-    }
+        if(!interpolator) {
+            iInterpolator = iBlock;
+            interpolator = new TransformInterpolator( this );
+        }
 
-    if ( interpolator ) {
-        return interpolator->update( nif, iBlock );
+        if ( interpolator ) {
+            return interpolator->update( nif, iBlock );
+        }
     }
 
     return false;

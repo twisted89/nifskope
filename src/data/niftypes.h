@@ -973,9 +973,9 @@ public:
 
 	//! %Data accessor
 	const float * data() const { return (float *)m; }
-
+    float m[3][3];
 protected:
-	float m[3][3];
+
 	static const float identity[9];
 
 	friend class NifIStream;

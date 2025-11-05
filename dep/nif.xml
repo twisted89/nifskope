@@ -2706,7 +2706,7 @@
         <add name="Has Old Extra Data" type="bool" ver2="2.3">Extra data for pre-3.0 versions.</add>
         <add name="Old Extra Prop Name" cond="Has Old Extra Data" ver2="2.3" type="string">(=NiStringExtraData)</add>
         <add name="Old Extra Id" cond="Has Old Extra Data" ver2="2.3" type="uint"></add>
-        <add name="Old Extra Internal Id" cond="Has Old Extra Data" ver2="2.3" type="uint">ref</add>
+        <add name="Old Extra Internal Id" cond="Has Old Extra Data" ver2="2.3" type="Ref" template="NiObject">ref</add>
         <add name="Old Extra String" cond="Has Old Extra Data" ver2="2.0" type="string">Extra string data.</add>
         <add name="Extra Data" type="Ref" template="NiExtraData" ver1="3.0" ver2="4.2.2.0">Extra data object index. (The first in a chain)</add>
         <add name="Num Extra Data List" type="uint" ver1="10.0.1.0">The number of Extra Data objects referenced through the list.</add>
@@ -2816,8 +2816,8 @@
         <add name="Attenuation Curve" type="float" ver2="3.0" default="0"></add>
         <add name="Attenuation" type="byte" ver2="3.0" default="0"></add>
         <add name="Light Type" type="uint" ver2="3.0" default="0"></add>
-        <add name="UnknownCount" type="uint" ver2="3.0" default="0"></add>
-        <add name="UnknownInt" type="uint" ver2="3.0" arr1="UnknownCount" cond="UnknownCount > 0">Unknown.</add>
+        <add name="Num Affected Nodes" type="uint" ver2="3.0" default="0"></add>
+        <add name="Affected Nodes" type="Ptr" ver2="3.0" template="NiNode" arr1="Num Affected Nodes" cond="Num Affected Nodes > 0"></add>
     </niobject>
 
     <niobject name="NiProperty" abstract="1" inherit="NiObjectNET">
@@ -3843,7 +3843,7 @@
     
     <compound name="NiLinRotKey">
          <add name="Time" type="float">Time</add>
-         <add name="Unknown 1" type="float">Unknown.</add>         
+         <add name="Angle" type="float"></add>         
          <add name="Axis" type="Vector3" />
          <add name="Value" type="Quaternion" />
          <add name="Unknown 2" type="uint">Unknown.</add>
@@ -3852,7 +3852,7 @@
     
     <compound name="NiBezRotKey">
          <add name="Time" type="float">Time</add>
-         <add name="Unknown 1" type="float">Unknown.</add>         
+         <add name="Angle" type="float"></add>         
          <add name="Axis" type="Vector3" />
          <add name="Value" type="Quaternion" />
          <add name="Unknown 2" type="uint">Unknown.</add>
@@ -3863,7 +3863,7 @@
     
     <compound name="NiTCBRotKey">
          <add name="Time" type="float">Time</add>
-         <add name="Unknown 1" type="float">Unknown.</add>         
+         <add name="Angle" type="float"></add>         
          <add name="Axis" type="Vector3" />
          <add name="Value" type="Quaternion" />
          <add name="Unknown 2" type="uint">Unknown.</add>
@@ -3879,7 +3879,7 @@
     
     <compound name="NiEulerRotKey">
          <add name="Time" type="float">Time</add>
-         <add name="Unknown 1" type="float">Unknown.</add>         
+         <add name="Angle" type="float"></add>         
          <add name="Axis" type="Vector3" />
          <add name="Value" type="Quaternion" />
          <add name="Unknown 2" type="uint">Unknown.</add>
