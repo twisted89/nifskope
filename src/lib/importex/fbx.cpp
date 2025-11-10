@@ -617,7 +617,7 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                     ctx.materialMap[nif->getBlockNumber( iBlock )] = lMaterial;
                 }
                 
-                else if(nif->isNiBlock( ipBlock, "NiTextureProperty"))
+                else if(nif->isNiBlock( ipBlock, "NiTextureProperty") || nif->isNiBlock( ipBlock, "NiMultiTextureProperty"))
                 {
                     foreach ( const int cl, nif->getChildLinks( nif->getBlockNumber( ipBlock )) ) {
                         QModelIndex ciBlock = nif->getBlock( cl );
@@ -682,9 +682,10 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                                         }
                                     }
                                 }
-                                
-                                ctx.textureMap[nif->getBlockNumber( iBlock )].push_back(TEXTURE_INSTANCE {textureName, components == 4, emissiveColor });
-                                break;
+                                if(ctx.textureMap.find(nif->getBlockNumber( iBlock )) != ctx.textureMap.end())
+                                {
+                                    ctx.textureMap[nif->getBlockNumber( iBlock )].push_back(TEXTURE_INSTANCE {textureName, components == 4, emissiveColor });
+                                }
                             }
                         }
                     }
