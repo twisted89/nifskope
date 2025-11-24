@@ -65,7 +65,7 @@ class GLView final : public QGLWidget
 
 private:
 	GLView( const QGLFormat & format, QWidget * parent, const QGLWidget * shareWidget = 0 );
-	~GLView();
+    ~GLView();
 
 public:
 	//! Static instance
@@ -169,7 +169,7 @@ public slots:
 	void updateScene();
 	void updateAnimationState( bool checked );
 	void setVisMode( Scene::VisMode, bool checked = true );
-	void updateSettings();
+    void updateSettings();
 
 signals:
 	void clicked( const QModelIndex & );

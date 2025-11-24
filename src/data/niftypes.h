@@ -386,6 +386,17 @@ public:
         return transform * Eigen::Vector3d(this->xyz[0], this->xyz[1], this->xyz[2]);
     }
 
+    const Eigen::Vector3d toYUp() const
+    {
+        // Transformation matrix: -90 degrees rotation around X-axis
+        Eigen::Matrix3d transform;
+        transform << 1,  0,  0,
+            0,  0,  1,
+            0, -1,  0;
+
+        return transform * Eigen::Vector3d(this->xyz[0], this->xyz[1], this->xyz[2]);
+    }
+
 	//! Find the dot product of two vectors
 	static float dotproduct( const Vector3 & v1, const Vector3 & v2 )
 	{

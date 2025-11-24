@@ -163,6 +163,12 @@ HEADERS += \
 	src/io/material.h \
 	src/io/nifstream.h \
 	src/lib/importex/3ds.h \
+	src/lib/importex/exportcommon.h \
+	src/lib/importex/gltf.h \
+	src/lib/importex/json.hpp \
+	src/lib/importex/stb_image.h \
+	src/lib/importex/stb_image_write.h \
+	src/lib/importex/tiny_gltf.h \
 	src/lib/nvtristripwrapper.h \
 	src/lib/qhull.h \
 	src/model/basemodel.h \
@@ -226,8 +232,10 @@ SOURCES += \
 	src/io/material.cpp \
 	src/io/nifstream.cpp \
 	src/lib/importex/3ds.cpp \
+	src/lib/importex/exportcommon.cpp \
 	src/lib/importex/fbx.cpp \
 	src/lib/importex/FBXCommon.cpp \
+	src/lib/importex/gltf.cpp \
 	src/lib/importex/importex.cpp \
 	src/lib/importex/obj.cpp \
 	src/lib/importex/col.cpp \

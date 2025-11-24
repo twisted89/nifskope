@@ -95,6 +95,92 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! @file glview.cpp GLView implementation
 
+static void glDebugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
+                                              GLsizei length, const GLchar* message, const void* userParam)
+{
+    Q_UNUSED(length);
+    Q_UNUSED(userParam);
+    const char* sourceStr = "Unknown";
+    const char* typeStr = "Unknown";
+    const char* severityStr = "Unknown";
+
+    switch (source) {
+    case GL_DEBUG_SOURCE_API:
+        sourceStr = "API";
+        break;
+    case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+        sourceStr = "Window System";
+        break;
+    case GL_DEBUG_SOURCE_SHADER_COMPILER:
+        sourceStr = "Shader Compiler";
+        break;
+    case GL_DEBUG_SOURCE_THIRD_PARTY:
+        sourceStr = "Third Party";
+        break;
+    case GL_DEBUG_SOURCE_APPLICATION:
+        sourceStr = "Application";
+        break;
+    case GL_DEBUG_SOURCE_OTHER:
+        sourceStr = "Other";
+        break;
+    }
+
+    switch (type) {
+    case GL_DEBUG_TYPE_ERROR:
+        typeStr = "Error";
+        break;
+    case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+        typeStr = "Deprecated Behavior";
+        break;
+    case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+        typeStr = "Undefined Behavior";
+        break;
+    case GL_DEBUG_TYPE_PORTABILITY:
+        typeStr = "Portability";
+        break;
+    case GL_DEBUG_TYPE_PERFORMANCE:
+        typeStr = "Performance";
+        break;
+    case GL_DEBUG_TYPE_MARKER:
+        typeStr = "Marker";
+        break;
+    case GL_DEBUG_TYPE_PUSH_GROUP:
+        typeStr = "Push Group";
+        break;
+    case GL_DEBUG_TYPE_POP_GROUP:
+        typeStr = "Pop Group";
+        break;
+    case GL_DEBUG_TYPE_OTHER:
+        typeStr = "Other";
+        break;
+    }
+
+    switch (severity) {
+    case GL_DEBUG_SEVERITY_HIGH:
+        severityStr = "HIGH";
+        break;
+    case GL_DEBUG_SEVERITY_MEDIUM:
+        severityStr = "MEDIUM";
+        break;
+    case GL_DEBUG_SEVERITY_LOW:
+        severityStr = "LOW";
+        break;
+    case GL_DEBUG_SEVERITY_NOTIFICATION:
+        severityStr = "NOTIFICATION";
+        break;
+    }
+
+    // Filter out notifications by default to reduce spam
+    if (severity == GL_DEBUG_SEVERITY_NOTIFICATION)
+        return;
+
+    qDebug() << QString("[GL DEBUG] [%1] [%2] [%3] ID %4: %5")
+                    .arg(severityStr)
+                    .arg(sourceStr)
+                    .arg(typeStr)
+                    .arg(id)
+                    .arg(message);
+}
 
 GLGraphicsView::GLGraphicsView( QWidget * parent ) : QGraphicsView()
 {
@@ -130,7 +216,7 @@ GLView * GLView::create( NifSkope * window )
 	}
 	
 	// OpenGL version
-	fmt.setVersion( 2, 1 );
+    fmt.setVersion( 2, 1 );
 	// Ignored if version < 3.2
 	//fmt.setProfile(QGLFormat::CoreProfile);
 
@@ -141,7 +227,7 @@ GLView * GLView::create( NifSkope * window )
 	fmt.setSamples( std::pow( aa, 2 ) );
 
 	fmt.setDirectRendering( true );
-	fmt.setRgba( true );
+    fmt.setRgba( true );
 
 	views.append( QPointer<GLView>( new GLView( fmt, window, share ) ) );
 
@@ -149,7 +235,7 @@ GLView * GLView::create( NifSkope * window )
 }
 
 GLView::GLView( const QGLFormat & format, QWidget * p, const QGLWidget * shareWidget )
-	: QGLWidget( format, p, shareWidget )
+    : QGLWidget( format, p, shareWidget )
 {
 	setFocusPolicy( Qt::ClickFocus );
 	//setAttribute( Qt::WA_PaintOnScreen );
@@ -178,7 +264,7 @@ GLView::GLView( const QGLFormat & format, QWidget * p, const QGLWidget * shareWi
 		exit( 1 );
 	}
 
-	glFuncs->initializeOpenGLFunctions();
+    glFuncs->initializeOpenGLFunctions();
 
 	view = ViewDefault;
 	animState = AnimEnabled;
@@ -312,6 +398,27 @@ void GLView::initializeGL()
 	//glGetIntegerv( GL_VIEWPORT, viewport );
 	aspect = (GLdouble)width() / (GLdouble)height();
 
+    // Setup OpenGL debug output if available
+    if ( glContext->hasExtension( "GL_KHR_debug" ) || glContext->hasExtension( "GL_ARB_debug_output" ) ) {
+        glEnable( GL_DEBUG_OUTPUT );
+        glEnable( GL_DEBUG_OUTPUT_SYNCHRONOUS );
+
+        // Install debug message callback
+        typedef void (*DEBUGPROC)(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam);
+        typedef void (*DEBUGCALLBACKPROC)(DEBUGPROC callback, const void * userParam);
+        DEBUGCALLBACKPROC glDebugMessageCallbackPtr = (DEBUGCALLBACKPROC)glContext->getProcAddress("glDebugMessageCallback");
+        if (glDebugMessageCallbackPtr) {
+            glDebugMessageCallbackPtr((DEBUGPROC)glDebugMessageCallback, nullptr);
+            qDebug() << "OpenGL debug output callback installed";
+        } else {
+            qDebug() << "Failed to get glDebugMessageCallback address";
+        }
+
+        qDebug() << "OpenGL debug output enabled";
+    } else {
+        qDebug() << "GL_KHR_debug or GL_ARB_debug_output not available";
+    }
+
 	// Check for errors
 	while ( ( err = glGetError() ) != GL_NO_ERROR )
 		qDebug() << tr( "glview.cpp - GL ERROR (init) : " ) << (const char *)gluErrorString( err );
@@ -331,7 +438,7 @@ void GLView::glProjection( int x, int y )
 	glMatrixMode( GL_PROJECTION );
 	glLoadIdentity();
 
-	BoundSphere bs = scene->view * scene->bounds();
+    BoundSphere bs = scene->view * scene->bounds();
 
 	if ( scene->options & Scene::ShowAxes ) {
 		bs |= BoundSphere( scene->view * Vector3(), axis );
@@ -340,29 +447,34 @@ void GLView::glProjection( int x, int y )
 	float bounds = (bs.radius > 1024.0) ? bs.radius : 1024.0;
 
 	GLdouble nr = fabs( bs.center[2] ) - bounds * 1.5;
-	GLdouble fr = fabs( bs.center[2] ) + bounds * 1.5;
+    GLdouble fr = fabs( bs.center[2] ) + bounds * 1.5;
+
+    if(isnan(nr)|| isnan(fr)) {
+        nr = 1.0;
+        fr = 2.0;
+    }
 
 	if ( perspectiveMode || (view == ViewWalk) ) {
 		// Perspective View
-		if ( nr < 1.0 )
-			nr = 1.0;
-		if ( fr < 2.0 )
-			fr = 2.0;
+        if ( nr < 1.0 )
+            nr = 1.0;
+        if ( fr < 2.0 )
+            fr = 2.0;
 
-		if ( nr > fr ) {
-			// add: swap them when needed
-			GLfloat tmp = nr;
-			nr = fr;
-			fr = tmp;
-		}
+        if ( nr > fr ) {
+            // add: swap them when needed
+            GLfloat tmp = nr;
+            nr = fr;
+            fr = tmp;
+        }
 
-		if ( (fr - nr) < 0.00001f ) {
-			// add: ensure distance
-			nr = 1.0;
-			fr = 2.0;
-		}
+        if ( (fr - nr) < 0.00001f ) {
+            // add: ensure distance
+            nr = 1.0;
+            fr = 2.0;
+        }
 
-		GLdouble h2 = tan( ( cfg.fov / Zoom ) / 360 * M_PI ) * nr;
+        GLdouble h2 = tan( ( cfg.fov / Zoom ) / 360 * M_PI ) * nr;
 		GLdouble w2 = h2 * aspect;
 		glFrustum( -w2, +w2, -h2, +h2, nr, fr );
 	} else {

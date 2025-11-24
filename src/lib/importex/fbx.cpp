@@ -14,6 +14,7 @@
 #include <filesystem>
 
 #include "FBXCommon.h"
+#include "exportcommon.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -42,20 +43,6 @@ struct FBX_ExportContext {
     FbxArray<FbxNode*> NodeLinksArray;
 };
 
-bool CreateDirectoryRecursive(std::string const & dirName)
-{
-    std::error_code err;
-    if (!std::filesystem::create_directories(dirName, err))
-    {
-        if (std::filesystem::exists(dirName))
-        {
-            // The folder already exists:
-            return true;
-        }
-        return false;
-    }
-    return true;
-}
 
 bool CreateTransparencyMap(const std::string& sourceTexturePath, const std::string& outputPath, int width, int height, const unsigned char* rgbaData)
 {
@@ -96,25 +83,6 @@ bool CreateEmissiveMap(const std::string& sourceTexturePath, const std::string& 
     
     // Save as RGB PNG
     return stbi_write_png(outputPath.c_str(), width, height, 3, emissiveData.data(), width * 3) != 0;
-}
-
-QModelIndex FindSceneRoot(const NifModel * nif, const QModelIndex & iNode)
-{
-    auto links = iNode.isValid() ? nif->getChildLinks( nif->getBlockNumber( iNode ) ) : nif->getRootLinks();
-    foreach ( int l,  links ) {
-        QModelIndex iChild = nif->getBlock( l );
-        
-        if ( nif->inherits( iChild, "NiNode" ) )
-        {
-            if(nif->get<QString>( iChild, "Name" ) == "Scene_Root")
-                return iChild;
-            auto result = FindSceneRoot(nif, iChild);
-            if( result.isValid() )
-                return result;
-        }
-    }
-    
-    return QModelIndex();
 }
 
 bool HasChildBone(const NifModel * nif, const QModelIndex & iNode)
@@ -347,23 +315,23 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                                     diff += 360.0;
                                 }
                             }
-                            
+
                             // Check alternative Euler representations due to gimbal lock
                             Eigen::Vector3d alternative;
                             alternative[0] = unwrapped[0] + 180.0;
                             alternative[1] = 180.0 - unwrapped[1];
                             alternative[2] = unwrapped[2] + 180.0;
-                            
+
                             // Normalize the alternative to [-180, 180] range
                             for (int i = 0; i < 3; i++) {
                                 while (alternative[i] > 180.0) alternative[i] -= 360.0;
                                 while (alternative[i] < -180.0) alternative[i] += 360.0;
                             }
-                            
+
                             // Calculate distances
                             double distStandard = (unwrapped - prev).squaredNorm();
                             double distAlternative = (alternative - prev).squaredNorm();
-                            
+
                             // Use whichever representation is closer to the previous frame
                             current = (distAlternative < distStandard) ? alternative : unwrapped;
                         };
@@ -421,96 +389,149 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                             }
                             else if(rotationKeyType == 3) //TCB
                             {
+                                // Helper function to convert quaternion to Euler angles with continuity
+                                auto quatToEulerContinuous = [](const Quat& q, const Eigen::Vector3d& prevEuler) -> Eigen::Vector3d {
+                                    // Convert quaternion to rotation matrix
+                                    Matrix m;
+                                    m.fromQuat(q);
+
+                                    // Convert matrix to Euler angles (XYZ order) with proper Y-up coordinate transform
+                                    Eigen::Vector3d euler = m.toEulerXYZ();
+
+                                    // Generate all equivalent Euler angle representations
+                                    // (accounting for the 2π periodicity and gimbal lock alternatives)
+                                    std::vector<Eigen::Vector3d> candidates;
+                                    candidates.reserve(12);
+
+                                    // Standard representation
+                                    candidates.push_back(euler);
+
+                                    // Gimbal lock alternatives (when pitch is near ±90°)
+                                    candidates.push_back(Eigen::Vector3d(euler[0] + 180.0, 180.0 - euler[1], euler[2] + 180.0));
+                                    candidates.push_back(Eigen::Vector3d(euler[0] - 180.0, 180.0 - euler[1], euler[2] + 180.0));
+                                    candidates.push_back(Eigen::Vector3d(euler[0] + 180.0, 180.0 - euler[1], euler[2] - 180.0));
+                                    candidates.push_back(Eigen::Vector3d(euler[0] - 180.0, 180.0 - euler[1], euler[2] - 180.0));
+
+                                    // Wrap-around alternatives (±360° for each axis)
+                                    for (int i = 0; i < 3; i++) {
+                                        Eigen::Vector3d plusWrap = euler;
+                                        Eigen::Vector3d minusWrap = euler;
+                                        plusWrap[i] += 360.0;
+                                        minusWrap[i] -= 360.0;
+                                        candidates.push_back(plusWrap);
+                                        candidates.push_back(minusWrap);
+                                    }
+
+                                    // Find the candidate with minimum distance to previous Euler angles
+                                    double minDist = std::numeric_limits<double>::max();
+                                    Eigen::Vector3d bestEuler = euler;
+
+                                    for (auto& candidate : candidates) {
+                                        // Normalize to [-180, 180] range
+                                        for (int i = 0; i < 3; i++) {
+                                            while (candidate[i] > 180.0) candidate[i] -= 360.0;
+                                            while (candidate[i] < -180.0) candidate[i] += 360.0;
+                                        }
+
+                                        // Calculate weighted distance (prioritize pitch/Y stability to minimize gimbal lock artifacts)
+                                        Eigen::Vector3d diff = candidate - prevEuler;
+                                        double dist = diff[0] * diff[0] + diff[1] * diff[1] * 2.0 + diff[2] * diff[2];
+
+                                        if (dist < minDist) {
+                                            minDist = dist;
+                                            bestEuler = candidate;
+                                        }
+                                    }
+
+                                    return bestEuler;
+                                };
+
+                                // Convert current keyframe quaternion to Euler angles
+                                Eigen::Vector3d euler = quatToEulerContinuous(rot, prevEuler);
+                                prevEuler = euler;
+
                                 // Add the main keyframe
                                 int xIndex = lRotationCurveX->KeyAdd(fbxTime);
                                 int yIndex = lRotationCurveY->KeyAdd(fbxTime);
                                 int zIndex = lRotationCurveZ->KeyAdd(fbxTime);
-                                
+
                                 lRotationCurveX->KeySetValue(xIndex, euler.x());
                                 lRotationCurveY->KeySetValue(yIndex, euler.y());
                                 lRotationCurveZ->KeySetValue(zIndex, euler.z());
-                                
-                                lRotationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationLinear);
-                                lRotationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationLinear);
-                                lRotationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationLinear);
-                                
+
+                                // Use constant interpolation to prevent Unity from auto-smoothing between samples
+                                lRotationCurveX->KeySetInterpolation(xIndex, FbxAnimCurveDef::eInterpolationConstant);
+                                lRotationCurveY->KeySetInterpolation(yIndex, FbxAnimCurveDef::eInterpolationConstant);
+                                lRotationCurveZ->KeySetInterpolation(zIndex, FbxAnimCurveDef::eInterpolationConstant);
+
                                 // Sample the Squad curve between this key and the next
-                                if (rindex + 1 < nif->rowCount( rkeys )) {
-                                    QModelIndex nextKey = rkeys.child( rindex + 1, 0 );
-                                    Quat nextRot = nif->get<Quat>( nextKey, "Value" );
-                                    Quat m_A = nif->get<Quat>( rkey, "A" );
-                                    Quat m_B = nif->get<Quat>( nextKey, "B" );
-                                    float nextTime = nif->get<float>( nextKey, "Time" );
+                                if (rindex + 1 < nif->rowCount(rkeys)) {
+                                    QModelIndex nextKey = rkeys.child(rindex + 1, 0);
+                                    Quat nextRot = nif->get<Quat>(nextKey, "Value");
+                                    Quat m_A = nif->get<Quat>(rkey, "A");
+                                    Quat m_B = nif->get<Quat>(nextKey, "B");
+                                    float nextTime = nif->get<float>(nextKey, "Time");
                                     float deltaTime = nextTime - keyTime;
-                                    
-                                    // Ensure continuity for control quaternions to take shortest path
+
+                                    // Ensure quaternion continuity (shortest path interpolation)
                                     if (Quat::dotproduct(rot, m_A) < 0.0f) {
-                                        m_A[0] = -m_A[0];
-                                        m_A[1] = -m_A[1];
-                                        m_A[2] = -m_A[2];
-                                        m_A[3] = -m_A[3];
+                                        m_A[0] = -m_A[0]; m_A[1] = -m_A[1]; m_A[2] = -m_A[2]; m_A[3] = -m_A[3];
                                     }
                                     if (Quat::dotproduct(rot, nextRot) < 0.0f) {
-                                        nextRot[0] = -nextRot[0];
-                                        nextRot[1] = -nextRot[1];
-                                        nextRot[2] = -nextRot[2];
-                                        nextRot[3] = -nextRot[3];
+                                        nextRot[0] = -nextRot[0]; nextRot[1] = -nextRot[1];
+                                        nextRot[2] = -nextRot[2]; nextRot[3] = -nextRot[3];
                                     }
                                     if (Quat::dotproduct(nextRot, m_B) < 0.0f) {
-                                        m_B[0] = -m_B[0];
-                                        m_B[1] = -m_B[1];
-                                        m_B[2] = -m_B[2];
-                                        m_B[3] = -m_B[3];
+                                        m_B[0] = -m_B[0]; m_B[1] = -m_B[1]; m_B[2] = -m_B[2]; m_B[3] = -m_B[3];
                                     }
-                                    
-                                    // Sample at 100ms intervals (0.1 seconds)
-                                    const float sampleInterval = 0.1f;
-                                    int numSamples = static_cast<int>(deltaTime / sampleInterval);
+
+                                    // Sample at 30fps (33.333ms per frame)
+                                    const float sampleInterval = 1.0f / 30.0f; // ~0.033 seconds
+                                    int numSamples = std::max(1, static_cast<int>(std::ceil(deltaTime / sampleInterval)));
+
                                     Quat prevSampleQuat = rot;
-                                    
-                                    // Create intermediate samples using Squad interpolation
+
+                                    // Generate intermediate samples using Squad (Spherical Cubic) interpolation
                                     for (int s = 1; s < numSamples; s++) {
-                                        float t = (s * sampleInterval) / deltaTime;
-                                        float sampleTime = keyTime + (s * sampleInterval);
-                                        
-                                        // Squad interpolation: Squad(t, p, a, b, q)
-                                        // Matches NiTCBRotKey::Interpolate implementation
+                                        // Normalized time parameter [0, 1] for this segment
+                                        float t = static_cast<float>(s) / static_cast<float>(numSamples);
+
+                                        // Don't oversample past the next keyframe
+                                        if (t >= 1.0f) break;
+
+                                        float sampleTime = keyTime + (t * deltaTime);
+
+                                        // Squad interpolation formula: Squad(t, p, a, b, q) = Slerp(2t(1-t), Slerp(t, p, q), Slerp(t, a, b))
                                         Quat interpQuat = Quat::slerp(2.0f * t * (1.0f - t),
                                                                       Quat::slerp(t, rot, nextRot),
                                                                       Quat::slerp(t, m_A, m_B));
-                                        
-                                        // Ensure shortest path between consecutive samples
+
+                                        // Ensure shortest path for consecutive samples
                                         if (Quat::dotproduct(prevSampleQuat, interpQuat) < 0.0f) {
-                                            interpQuat[0] = -interpQuat[0];
-                                            interpQuat[1] = -interpQuat[1];
-                                            interpQuat[2] = -interpQuat[2];
-                                            interpQuat[3] = -interpQuat[3];
+                                            interpQuat[0] = -interpQuat[0]; interpQuat[1] = -interpQuat[1];
+                                            interpQuat[2] = -interpQuat[2]; interpQuat[3] = -interpQuat[3];
                                         }
                                         prevSampleQuat = interpQuat;
-                                        
-                                        // Convert interpolated quaternion to Euler angles
-                                        Matrix interpMatrix;
-                                        interpMatrix.fromQuat(interpQuat);
-                                        Eigen::Vector3d interpEuler = interpMatrix.toEulerXYZ();
-                                        
-                                        // Unwrap Euler angles to maintain continuity
-                                        unwrapEuler(prevEuler, interpEuler);
+
+                                        // Convert interpolated quaternion to Euler angles with continuity
+                                        Eigen::Vector3d interpEuler = quatToEulerContinuous(interpQuat, prevEuler);
                                         prevEuler = interpEuler;
-                                        
+
                                         // Add sampled keyframe
                                         FbxTime sampleFbxTime(sampleTime * FBXSDK_TC_SECOND);
-                                        
+
                                         int sxIndex = lRotationCurveX->KeyAdd(sampleFbxTime);
                                         int syIndex = lRotationCurveY->KeyAdd(sampleFbxTime);
                                         int szIndex = lRotationCurveZ->KeyAdd(sampleFbxTime);
-                                        
+
                                         lRotationCurveX->KeySetValue(sxIndex, interpEuler.x());
                                         lRotationCurveY->KeySetValue(syIndex, interpEuler.y());
                                         lRotationCurveZ->KeySetValue(szIndex, interpEuler.z());
-                                        
-                                        lRotationCurveX->KeySetInterpolation(sxIndex, FbxAnimCurveDef::eInterpolationLinear);
-                                        lRotationCurveY->KeySetInterpolation(syIndex, FbxAnimCurveDef::eInterpolationLinear);
-                                        lRotationCurveZ->KeySetInterpolation(szIndex, FbxAnimCurveDef::eInterpolationLinear);
+
+                                        // Use constant interpolation to prevent Unity from modifying tangents
+                                        lRotationCurveX->KeySetInterpolation(sxIndex, FbxAnimCurveDef::eInterpolationConstant);
+                                        lRotationCurveY->KeySetInterpolation(syIndex, FbxAnimCurveDef::eInterpolationConstant);
+                                        lRotationCurveZ->KeySetInterpolation(szIndex, FbxAnimCurveDef::eInterpolationConstant);
                                     }
                                 }
                             }
@@ -682,7 +703,7 @@ void ProcessNode(const NifModel * nif, const QModelIndex & iNode, FbxScene* scen
                                         }
                                     }
                                 }
-                                if(ctx.textureMap.find(nif->getBlockNumber( iBlock )) != ctx.textureMap.end())
+                                if(!nif->isNiBlock( ipBlock, "NiMultiTextureProperty") && ctx.textureMap.find(nif->getBlockNumber( iBlock )) == ctx.textureMap.end())
                                 {
                                     ctx.textureMap[nif->getBlockNumber( iBlock )].push_back(TEXTURE_INSTANCE {textureName, components == 4, emissiveColor });
                                 }
@@ -943,7 +964,9 @@ void ProcessObjects(const NifModel * nif, const QModelIndex & iNode, FbxScene* p
                 }
                 mesh->AddDeformer(meshSkin);
             }
-            
+
+            if(nif->getBlockNumber( iBlock ) == 949)
+                int test = 0;
             
             FbxSurfaceLambert* lMaterial = ctx.materialMap[nif->getBlockNumber( iBlock )];
             
@@ -971,7 +994,7 @@ void ProcessObjects(const NifModel * nif, const QModelIndex & iNode, FbxScene* p
                 // Save the material on the layer
                 lLayer->SetMaterials(lLayerElementMaterial);
                 auto textures = ctx.textureMap[nif->getBlockNumber( iBlock )];
-                
+
                 if(textures.size())
                 {
                     auto textureInfo = textures.front();
@@ -1052,16 +1075,32 @@ void ProcessObjects(const NifModel * nif, const QModelIndex & iNode, FbxScene* p
                         lTextureElement->GetDirectArray().Add(tTexture);
                     lLayer->SetTextures(FbxLayerElement::EType::eTextureDiffuse, lTextureElement);
                     
-                    // Create and configure the UV element for direct index access.
+                    // Create and configure the UV element for polygon mapping (not control point).
+                    // This ensures UVs are properly associated with faces for Maya compatibility.
                     FbxLayerElementUV* lUVElement = FbxLayerElementUV::Create(mesh, "DiffuseUV");
-                    lUVElement->SetMappingMode(FbxLayerElement::eByControlPoint); // Mapping for direct UV access.
-                    lUVElement->SetReferenceMode(FbxLayerElement::eDirect); // Reference mode for direct UV values.
-                    
-                    for(auto &tc : textureCoords)
+                    lUVElement->SetMappingMode(FbxLayerElement::eByPolygonVertex); // Map UVs to polygon vertices
+                    lUVElement->SetReferenceMode(FbxLayerElement::eIndexToDirect); // Use indexed direct reference
+      
+                    // Build UV indices for each polygon vertex
+                    for(int i = 0; i < triangles.count(); i++)
                     {
-                        lUVElement->GetDirectArray().Add(tc);
+                        // Each triangle has 3 vertices
+                        for(int v = 0; v < 3; v++)
+                        {
+                            int vertexIndex = triangles[i][v];
+                            if(vertexIndex < textureCoords.count())
+                            {
+                                lUVElement->GetDirectArray().Add(textureCoords[vertexIndex]);
+                                lUVElement->GetIndexArray().Add(lUVElement->GetDirectArray().GetCount() - 1);
+                            }
+                            else
+                            {
+                                // Fallback UV if out of range
+                                lUVElement->GetDirectArray().Add(FbxVector2(0.0, 0.0));
+                                lUVElement->GetIndexArray().Add(lUVElement->GetDirectArray().GetCount() - 1);
+                            }
+                        }
                     }
-                    
                     lLayer->SetUVs(lUVElement, FbxLayerElement::EType::eTextureDiffuse);
                 }
                 else

@@ -1833,6 +1833,14 @@
         <add name="Unknown Short" type="ushort" default="0">Unknown short</add>
         <add name="Vertex ID" type="ushort">Particle/vertex index matches array index</add>
     </compound>
+    
+    <compound name="ParticleData">
+        particle data
+        <add name="Velocity" type="Vector3">Velocity</add>
+        <add name="Rotation" type="Vector3">Rotations</add>
+        <add name="Angle" type="Vector3">Direction</add>
+        <add name="Axis" type="Vector3">Angle</add>
+    </compound>
 
     <compound name="BoneData">
         NiSkinData::BoneData. Skinning data component.
@@ -2249,17 +2257,6 @@
         Unknown!
         <add name="Unknown 1" type="byte" arr1="14">Unknown.</add>
     </niobject>
-
-    <niobject name="Ni3dsParticleSystem" abstract="0" inherit="NiObject">
-        Unknown!
-        <add name="Unknown 1" type="byte" arr1="14">Unknown.</add>
-    </niobject>
-
-    <niobject name="Ni3dsPathController" abstract="0" inherit="NiObject">
-        Unknown!
-        <add name="Unknown 1" type="byte" arr1="20">Unknown.</add>
-    </niobject>
-
 
     <niobject name="NiParticleModifier" abstract="1" inherit="NiObject">
         LEGACY (pre-10.1). Abstract base class for particle system modifiers.
@@ -3130,7 +3127,7 @@
              This causes massive inheritance problems so the rows below are doubled up to exclude NiParticleSystem for Bethesda Stream 100+.
         -->
         <!-- BSGeometry: Used by Bethesda Stream 100+ NiParticleSystem -->
-        <add name="Bound" type="NiBound" ver1="3.0" vercond="(User Version 2 &gt;= 100)" cond="NiParticleSystem" />
+        <add name="Bound" type="NiBound" ver1="3.0"  vercond="(User Version 2 &gt;= 100)" cond="NiParticleSystem" />
         <add name="Skin" type="Ref" template="NiObject" ver1="3.0" vercond="(User Version 2 &gt;= 100)" cond="NiParticleSystem" />
         <!-- NiGeometry: Each row is doubled in order to exclude NiParticleSystem for Bethesda Stream 100+ -->
         <add name="Data" type="Ref" template="NiGeometryData" ver1="3.0" vercond="(User Version 2 &lt; 100)">Data index (NiTriShapeData/NiTriStripData).</add>
@@ -3373,10 +3370,6 @@
         Rotating particles data object.
         <add name="Has Rotations 2" type="bool" ver2="4.2.2.0">Is the particle rotation array present?</add>
         <add name="Rotations 2" type="Quaternion" arr1="Num Vertices" cond="Has Rotations 2" ver2="4.2.2.0">The individual particle rotations.</add>
-    </niobject>
-
-    <niobject name="NiAutoNormalParticlesData" abstract="0" inherit="NiParticlesData">
-        Particle system data object (with automatic normals?).
     </niobject>
 
     <compound name="ParticleDesc">
@@ -3657,9 +3650,9 @@
         <add name="Fog Color" type="Color3">The color of the fog.</add>
     </niobject>
 
-    <niobject name="NiGravity" abstract="0" inherit="NiParticleModifier">
+    <niobject name="NiGravity" abstract="0" inherit="NiObjectNET">
         LEGACY (pre-10.1) particle modifier. Applies a gravitational field on the particles.
-        <add name="Unknown Float 1" type="float" ver1="3.3.0.13">Unknown.</add>
+        <add name="Decay" type="float">Decay rate</add>
         <add name="Force" type="float">The strength/force of this gravity.</add>
         <add name="Type" type="FieldType">The force field type.</add>
         <add name="Position" type="Vector3">The position of the mass point relative to the particle system.</add>
@@ -3968,11 +3961,86 @@
         <add name="Visibility Keys" type="NiFloatKeyArray" />
     </niobject>
     
+    <niobject name="Ni3dsPathController" abstract="0" inherit="NiNode">
+        <add name="Core" type="Ni3dsAnimationCore">Animation Core</add>
+        <add name="Num Path Keys" default="0" type="uint" />
+        <add name="Num Pct Keys" default="0" type="uint" />
+        <add name="Curve Type Open" type="byte" />
+        <add name="Bank Direction" default="0" type="uint" />
+        <add name="Allow Flip" type="byte" />
+        <add name="Bank" type="byte" />
+        <add name="Const Velocity" type="byte" />
+        <add name="Follow" type="byte" />
+        <add name="Max Bank Angle" default="0" type="float" />
+        <add name="Smoothing" default="0" type="float" />
+        <add name="FollowAxis" default="0" type="ushort" />
+        <add name="Flip" type="byte" />
+        <add name="Interpolation" type="PosKeyType" default="0" ver2="2.3" cond="Num Path Keys > 0" />
+        <add name="Path Keys" type="NiLinPosKey" ver2="2.3"  arr1="Num Path Keys" cond="Interpolation == 1" />
+        <add name="Path Keys" type="NiBezPosKey" ver2="2.3"  arr1="Num Path Keys" cond="Interpolation == 2" />
+        <add name="Path Keys" type="NiTCBPosKey" ver2="2.3"  arr1="Num Path Keys" cond="Interpolation == 3" />
+        <add name="Float Key Type" type="ScaleKeyType" default="0" cond="Num Pct Keys > 0" />
+        <add name="Pct Keys" type="NiLinFloatKey" arr1="Num Pct Keys" cond="Float Key Type == 1" />
+        <add name="Pct Keys" type="NiBezFloatKey" arr1="Num Pct Keys" cond="Float Key Type == 2" />
+        <add name="Pct Keys" type="NiTCBFloatKey" arr1="Num Pct Keys" cond="Float Key Type == 3" />
+        <add name="Pct Keys" type="NiMorphKey" arr1="Num Pct Keys" cond="Float Key Type == 4" />
+        <add name="Pct Keys" type="NiBaryMorphKey" arr1="Num Pct Keys" cond="Float Key Type == 5" />
+        <add name="Pct Keys" type="NiCubicMorphKey" arr1="Num Pct Keys" cond="Float Key Type == 6" />
+    </niobject>
+    
     <niobject name="Ni3dsBone" abstract="0" inherit="Ni3dsAnimationNode">
     </niobject>
 
     <niobject name="NiBone" abstract="0" inherit="NiNode">
         A NiNode used as a skeleton bone?
+    </niobject>
+    
+    <niobject name="Ni3dsParticleSystem" abstract="0" inherit="NiNode">
+        <add name="Core" type="Ni3dsAnimationCore">Animation Core</add>
+        <add name="MaxParticles" type="uint" default="0" />
+        <add name="Constant" type="byte" />
+        <add name="OperateInWC" type="byte" />
+        <add name="Size" type="uint" />
+        <add name="Speed" type="uint" />
+        <add name="SpeedVariation" type="uint" />
+        <add name="Life" type="uint" />
+        <add name="LifeVariation" type="uint" />
+        <add name="BirthRate" type="uint" />
+        <add name="Width" type="uint" />
+        <add name="Height" type="uint" />
+        <add name="Depth" type="uint" />
+        <add name="Start" type="uint" />
+        <add name="HideEmitter" type="uint" />
+        <add name="DirectionMethod" type="uint" />
+        <add name="DirectionVariation" type="uint" />
+        <add name="Direction" type="Vector3" />
+        <add name="SpawnGens" type="uint" />
+        <add name="SpawnType" type="uint" />
+        <add name="SpinTime" type="uint" />
+        <add name="SpinTimeVar" type="uint" />
+        <add name="UseAxis" type="uint" />
+        <add name="SpinAxisVariation" type="uint" />
+        <add name="SpinAxis" type="Vector3" />
+        <add name="RunUp" type="uint" />
+        <add name="EmitStop" type="uint" />
+        <add name="OffAxisSpread" type="uint" />
+        <add name="OffAxis" type="uint" />
+        <add name="OffPlaneSpread" type="uint" />
+        <add name="OffPlane" type="uint" />
+        <add name="SysType" type="uint" />
+        <add name="Has Mutations" type="bool"></add>
+        <add name="Mutations Count" default="0" cond="Has Mutations" type="uint"></add>
+        <add name="Mutations" cond="Mutations Count > 0" arr1="Mutations Count" type="uint"></add>
+        <add name="Has Particle Data" default="0" type="bool"></add>
+        <add name="Particle Data" cond="((Has Particle Data) &amp;&amp; (MaxParticles > 0))" arr1="MaxParticles" type="ParticleData"></add>
+        <add name="Unknown Int 1" type="uint"></add>
+        <add name="Unknown Count 1" default="0" type="uint"></add>
+        <add name="Unknown Array 1" cond="Unknown Count 1 > 0" arr1="Unknown Count 1" type="uint"></add>
+        <add name="Unknown Count 2" default="0" type="uint"></add>
+        <add name="Unknown Array 2" cond="Unknown Count 2 > 0" arr1="Unknown Count 2" type="uint"></add>
+        <add name="Ageing Data" type="NiPosData">Ageing Data</add>
+        <add name="GrowFor" type="uint" />
+        <add name="FadeFor" type="uint" />
     </niobject>
 
     <niobject name="AvoidNode" abstract="0" inherit="NiNode">
@@ -4094,13 +4162,21 @@
         <add name="Rotation Speed" type="float" />
     </niobject>
 
-    <niobject name="NiParticles" abstract="0" inherit="NiGeometry">
-        Generic particle system node.
-        <add name="Vertex Desc" type="BSVertexDesc" vercond="(User Version 2 &gt;= 100)" />
+    <niobject name="NiParticles" abstract="0" inherit="NiTriBasedGeom">
+        Generic particle system node. 
+        <add name="Unknown 1" type="uint" ver2="2.3"  />
+        <add name="Unknown 2" type="ushort" ver2="2.3"  />
+        <add name="Unknown 3" type="bool" ver2="2.3"  />
+        <add name="Particle Data" type="uint" arr1="Num Vertices" cond="Num Vertices &gt; 0" ver2="2.3" />
     </niobject>
 
     <niobject name="NiAutoNormalParticles" abstract="0" inherit="NiParticles">
-        LEGACY (pre-10.1). NiParticles which do not house normals and generate them at runtime.
+        <add name="Unknown 4" type="bool" ver2="2.3"  />
+        <add name="Auto Particle Data" type="Vector3" arr1="Num Vertices" cond="Num Vertices &gt; 0" ver2="2.3" />
+    </niobject>
+    
+    <niobject name="NiAutoNormalParticlesData" abstract="0" inherit="NiParticles">
+        Particle system data object (with automatic normals?).
     </niobject>
 
     <niobject name="NiParticleMeshes" abstract="0" inherit="NiParticles">
@@ -4788,9 +4864,9 @@
 
     <niobject name="NiTextureModeProperty" abstract="0" inherit="NiProperty">
         LEGACY (pre-10.1)
-        <add name="Clamp Mode" type="uint" ver2="2.3" />
+        <add name="Clamp Mode" type="TexClampMode" ver2="2.3" />
         <add name="Combine Mode" type="uint" ver2="2.3" />
-        <add name="Filter Mode" type="uint" ver2="2.3" />
+        <add name="Filter Mode" type="TexFilterMode" ver2="2.3" />
         <add name="Unknown Short" type="short" ver1="3.0">Unknown. Either 210 or 194.</add>
         <add name="PS2 L" type="short" default="0" ver1="3.1" ver2="10.2.0.0">0?</add>
         <add name="PS2 K" type="short" default="-75" ver1="3.1" ver2="10.2.0.0">-75?</add>
@@ -4863,9 +4939,9 @@
         <add name="Combine Mode Count" type="uint" ver2="2.3" default="0">Count of Combine modes</add>
         <add name="Combine Modes" type="uint" arr1="Combine Mode Count" ver2="2.3">Combine modes</add>
         <add name="Clamp Mode Count" type="uint" ver2="2.3" default="0">Count of Clamp modes</add>
-        <add name="Clamp Modes" type="uint" arr1="Clamp Mode Count" ver2="2.3">Clamp modes</add>
+        <add name="Clamp Modes" type="TexClampMode" arr1="Clamp Mode Count" ver2="2.3">Clamp modes</add>
         <add name="Filter Mode Count" type="uint" ver2="2.3" default="0">Count of Filter modes</add>
-        <add name="Filter Modes" type="uint" arr1="Filter Mode Count" ver2="2.3">Filter modes</add>
+        <add name="Filter Modes" type="TexFilterMode" arr1="Filter Mode Count" ver2="2.3">Filter modes</add>
     </niobject>
 
     <niobject name="NiMultiTextureProperty" abstract="0" inherit="NiTexturingProperty" />

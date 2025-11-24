@@ -1958,7 +1958,7 @@ bool NifModel::load( QIODevice & device )
 					device.read( (char *)&len, 4 );
 
 					if ( len < 0 || len > 80 )
-						throw tr( "next block (%1) does not start with a NiString" ).arg( c );
+                        throw tr( "next block (%1) does not start with a NiString at %2" ).arg( c ).arg(device.pos());
 
 					QString blktyp = device.read( len );
 
@@ -1983,8 +1983,10 @@ bool NifModel::load( QIODevice & device )
 
                     qDebug() << "Reading block " << blktyp << " at " << device.pos();
 
-                    //if(device.pos() == 1269068)
+                    //if(device.pos() == 7518259) {
                     //    __debugbreak();
+                    //    loggingEnabled = true;
+                    //}
 					if ( p != c )
                         linkMap.insert( p, c );
 

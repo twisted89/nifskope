@@ -34,6 +34,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "model/nifmodel.h"
 #include "model/nifproxymodel.h"
 #include "ui/widgets/nifview.h"
+#include "gltf.h"
 
 #include <QDockWidget>
 #include <QFileInfo>
@@ -50,7 +51,8 @@ void import3ds( NifModel * nif, const QModelIndex & index );
 
 void NifSkope::fillImportExportMenus()
 {
-    mExport->addAction( tr( "Export .FBX" ) );
+    //mExport->addAction( tr( "Export .FBX" ) );
+    mExport->addAction( tr( "Export .gltf" ) );
 	//mExport->addAction( tr( "Export .DAE" ) );
 	//mImport->addAction( tr( "Import .3DS" ) );
 	mImport->addAction( tr( "Import .OBJ" ) );
@@ -91,6 +93,8 @@ void NifSkope::sltImportExport( QAction * a )
 
     if ( a->text() == tr( "Export .FBX" ) )
         exportFBX( nif, index );
+    else if ( a->text() == tr( "Export .gltf" ) )
+        exportGLTF(nif, index );
 	else if ( a->text() == tr( "Import .OBJ" ) )
 		importObj( nif, index );
 	//else if ( a->text() == tr( "Import .3DS" ) )
