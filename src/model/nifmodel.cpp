@@ -1983,7 +1983,7 @@ bool NifModel::load( QIODevice & device )
 
                     qDebug() << "Reading block " << blktyp << " at " << device.pos();
 
-                    //if(device.pos() == 7518259) {
+                    //if(device.pos() == 3065067) {
                     //    __debugbreak();
                     //    loggingEnabled = true;
                     //}

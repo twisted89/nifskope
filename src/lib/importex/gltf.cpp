@@ -53,6 +53,10 @@ struct GLTF_ExportContext {
     // Animation data
     std::vector<float> animationTimes;
     int animationIndex = -1;
+
+    // Billboard tracking
+    std::vector<int> billboardNodes;      // List of node indices that are billboards
+    int cameraNodeIdx = -1;               // Index of the camera node (if any)
 };
 
 // Helper: Add buffer data to model
@@ -308,6 +312,318 @@ int CreateMaterial(const NifModel* nif, const QModelIndex& iBlock, GLTF_ExportCo
     return materialIdx;
 }
 
+void ProcessMorphTargetAnimation(const NifModel* nif, const QModelIndex& iBlock,
+                                 uint targetIndex, uint targetCount,
+                                 const std::string& targetName, GLTF_ExportContext& ctx)
+{
+    uint morphKeyCount = nif->get<uint>(iBlock, "Morph Key Count");
+    if (morphKeyCount == 0) {
+        return;
+    }
+
+    auto morphKeyType = nif->get<uint>(iBlock, "Morph Key Type");
+    QModelIndex iMorphKeys = nif->getIndex(iBlock, "Morph Keys");
+
+    if (!iMorphKeys.isValid()) {
+        return;
+    }
+
+    std::vector<float> times;
+    std::vector<float> weights;
+
+    // Extract keyframe data based on type
+    for (uint k = 0; k < morphKeyCount; k++) {
+        QModelIndex iKey = iMorphKeys.child(k, 0);
+        if (!iKey.isValid()) {
+            continue;
+        }
+
+        float keyTime = 0.0f;
+        float keyWeight = 0.0f;
+
+        if (morphKeyType == 1) { // LINEAR_KEY
+            keyTime = nif->get<float>(iKey, "Time");
+            keyWeight = nif->get<float>(iKey, "Value");
+        }
+        else if (morphKeyType == 2) { // BEZIER_KEY
+            QModelIndex iNiKey = nif->getIndex(iKey, "Key");
+            keyTime = nif->get<float>(iNiKey, "Time");
+            keyWeight = nif->get<float>(iNiKey, "Value");
+            // TODO: Sample Bezier curve using OutTan for smoother interpolation
+        }
+        else if (morphKeyType == 3) { // TBC_KEY
+            QModelIndex iNiKey = nif->getIndex(iKey, "Key");
+            keyTime = nif->get<float>(iNiKey, "Time");
+            keyWeight = nif->get<float>(iNiKey, "Value");
+            // TODO: Use Tension/Bias/Continuity for proper interpolation
+        }
+        else if (morphKeyType == 4) { // MORPH_KEY (NiMorphKey)
+            QModelIndex iTCBKey = nif->getIndex(iKey, "TCB Float Key");
+            QModelIndex iFloatKey = nif->getIndex(iTCBKey, "Key");
+            keyTime = nif->get<float>(iFloatKey, "Time");
+            keyWeight = nif->get<float>(iFloatKey, "Value");
+        }
+        else if (morphKeyType == 5) { // BARY_MORPH_KEY (NiBaryMorphKey)
+            QModelIndex iMorphKey = nif->getIndex(iKey, "Morph Key");
+            QModelIndex iTCBKey = nif->getIndex(iMorphKey, "TCB Float Key");
+            QModelIndex iFloatKey = nif->getIndex(iTCBKey, "Key");
+            keyTime = nif->get<float>(iFloatKey, "Time");
+
+            // For barycentric morph, use weight from Weights 1 array for this target
+            QModelIndex iWeights1 = nif->getIndex(iKey, "Weights 1");
+            if (iWeights1.isValid() && targetIndex < nif->rowCount(iWeights1)) {
+                keyWeight = nif->get<float>(iWeights1.child(targetIndex, 0));
+            } else {
+                keyWeight = 0.0f;
+            }
+        }
+        else if (morphKeyType == 6) { // CUBIC_MORPH_KEY (NiCubicMorphKey)
+            qWarning() << "NiCubicMorphKey (type 6) not yet supported for morph target animation";
+            continue;
+        }
+
+        times.push_back(keyTime);
+        weights.push_back(keyWeight);
+    }
+
+    if (times.empty()) {
+        return;
+    }
+
+    // Create animation for this specific morph target
+    Animation anim;
+    anim.name = targetName;
+
+    // Pack animation data
+    std::vector<unsigned char> timeData;
+    std::vector<unsigned char> weightData;
+
+    for (float t : times) {
+        const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&t);
+        timeData.insert(timeData.end(), bytes, bytes + sizeof(float));
+    }
+
+    // Create weights array with ALL morph targets (glTF requirement)
+    // Only this target will be animated, others stay at 0
+    for (size_t k = 0; k < times.size(); k++) {
+        for (uint t = 0; t < targetCount; t++) {
+            float w = (t == targetIndex) ? weights[k] : 0.0f;
+            const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&w);
+            weightData.insert(weightData.end(), bytes, bytes + sizeof(float));
+        }
+    }
+
+    // Create buffer
+    std::vector<unsigned char> animBufferData;
+    size_t timeOffset = 0;
+    size_t weightOffset = timeData.size();
+
+    animBufferData.insert(animBufferData.end(), timeData.begin(), timeData.end());
+    animBufferData.insert(animBufferData.end(), weightData.begin(), weightData.end());
+
+    int animBufferIdx = AddBufferData(ctx, animBufferData);
+
+    // Create accessors
+    int timeViewIdx = AddBufferView(ctx, animBufferIdx, timeOffset, timeData.size());
+    int timeAccIdx = AddAccessor(ctx, timeViewIdx, TINYGLTF_COMPONENT_TYPE_FLOAT,
+                                 times.size(), TINYGLTF_TYPE_SCALAR,
+                                 {times.front()}, {times.back()});
+
+    int weightViewIdx = AddBufferView(ctx, animBufferIdx, weightOffset, weightData.size());
+    int weightAccIdx = AddAccessor(ctx, weightViewIdx, TINYGLTF_COMPONENT_TYPE_FLOAT,
+                                   times.size(), TINYGLTF_TYPE_SCALAR);
+
+    // Create animation sampler
+    AnimationSampler sampler;
+    sampler.input = timeAccIdx;
+    sampler.output = weightAccIdx;
+    sampler.interpolation = "LINEAR";
+
+    int samplerIdx = anim.samplers.size();
+    anim.samplers.push_back(sampler);
+
+    // Create animation channel targeting the morph weights
+    AnimationChannel channel;
+    channel.sampler = samplerIdx;
+    channel.target_node = nif->getBlockNumber(iBlock);
+    channel.target_path = "weights";
+
+    anim.channels.push_back(channel);
+
+    // Add animation to model
+    ctx.model.animations.push_back(anim);
+
+    qInfo(nsIo) << "Exported morph target animation" << QString::fromStdString(targetName)
+                << "for target" << targetIndex
+                << "with" << times.size() << "keyframes";
+}
+
+void ProcessMorphTargets(const NifModel* nif, const QModelIndex& iBlock, int meshIdx, GLTF_ExportContext& ctx)
+{
+    if (!nif->isNiBlock(iBlock, "Ni3dsMorphShape")) {
+        return;
+    }
+
+    // Get base mesh information
+    QVector<Vector3> baseVerts = nif->getArray<Vector3>(iBlock, "Vertices");
+    if (baseVerts.isEmpty()) {
+        return;
+    }
+
+    uint targetCount = nif->get<uint>(iBlock, "Target Count");
+    uint morphKeyCount = nif->get<uint>(iBlock, "Morph Key Count");
+
+    if (targetCount == 0) {
+        return;
+    }
+
+    // Get the morph key type
+    auto morphKeyType = nif->get<uint>(iBlock, "Morph Key Type");
+
+    // Get target vertices array
+    QModelIndex iTargetVerts = nif->getIndex(iBlock, "Target Vertices");
+    if (!iTargetVerts.isValid()) {
+        return;
+    }
+
+    // glTF supports morph targets as position offsets from base mesh
+    Mesh& mesh = ctx.model.meshes[meshIdx];
+
+    // Storage for morph target data
+    std::vector<std::vector<Vector3>> morphTargets;
+    std::vector<std::string> morphTargetNames;
+    std::vector<double> morphWeights;
+
+    // Extract morph targets
+    // Target vertices are stored as: [target0_vert0, target0_vert1, ..., target1_vert0, ...]
+    int vertsPerTarget = baseVerts.count();
+
+    for (uint t = 0; t < targetCount; t++) {
+        std::vector<Vector3> targetVerts;
+        targetVerts.reserve(vertsPerTarget);
+
+        for (int v = 0; v < vertsPerTarget; v++) {
+            int index = t * vertsPerTarget + v;
+            QModelIndex iVert = iTargetVerts.child(index, 0);
+
+            if (iVert.isValid()) {
+                Vector3 vert = nif->get<Vector3>(iVert);
+                targetVerts.push_back(vert);
+            } else {
+                // If vertex data is missing, use base vertex
+                targetVerts.push_back(baseVerts[v]);
+            }
+        }
+
+        morphTargets.push_back(targetVerts);
+        morphTargetNames.push_back("Target_" + std::to_string(t));
+    }
+
+    // Get initial weights (first keyframe values)
+    QModelIndex iMorphKeys = nif->getIndex(iBlock, "Morph Keys");
+    morphWeights.resize(targetCount, 0.0);
+
+    if (iMorphKeys.isValid() && morphKeyCount > 0) {
+        QModelIndex iKey = iMorphKeys.child(0, 0);
+        if (iKey.isValid()) {
+            if (morphKeyType == 4) { // NiMorphKey
+                QModelIndex iWeights = nif->getIndex(iKey, "Weights 1");
+                if (iWeights.isValid() && nif->rowCount(iWeights) == targetCount) {
+                    for (uint w = 0; w < targetCount; w++) {
+                        morphWeights[w] = nif->get<float>(iWeights.child(w, 0));
+                    }
+                }
+            }
+            else if (morphKeyType == 5) { // NiBaryMorphKey
+                QModelIndex iWeights1 = nif->getIndex(iKey, "Weights 1");
+                if (iWeights1.isValid() && nif->rowCount(iWeights1) == targetCount) {
+                    for (uint w = 0; w < targetCount; w++) {
+                        morphWeights[w] = nif->get<float>(iWeights1.child(w, 0));
+                    }
+                }
+            }
+        }
+    }
+
+    // Create glTF morph targets (stored as position deltas)
+    for (size_t t = 0; t < morphTargets.size(); t++) {
+        std::vector<unsigned char> morphData;
+
+        // Calculate position deltas and bounds
+        float minDelta[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+        float maxDelta[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+
+        for (int v = 0; v < vertsPerTarget; v++) {
+            // Convert to Y-up and apply scale
+            Eigen::Vector3d delta = morphTargets[t][v].toYUp();
+            delta -= baseVerts[v].toYUp();
+
+            // Scale by NIF_TO_METERS
+            delta *= NIF_TO_METERS;
+
+            // Track bounds
+            for (int i = 0; i < 3; i++) {
+                float val = static_cast<float>(delta[i]);
+                minDelta[i] = std::min(minDelta[i], val);
+                maxDelta[i] = std::max(maxDelta[i], val);
+            }
+
+            // Pack delta (float32)
+            for (int i = 0; i < 3; i++) {
+                float val = static_cast<float>(delta[i]);
+                const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&val);
+                morphData.insert(morphData.end(), bytes, bytes + sizeof(float));
+            }
+        }
+
+        // Create buffer for morph target
+        int morphBufferIdx = AddBufferData(ctx, morphData);
+
+        // Create buffer view and accessor
+        int morphViewIdx = AddBufferView(ctx, morphBufferIdx, 0, morphData.size(), TINYGLTF_TARGET_ARRAY_BUFFER);
+        int morphAccIdx = AddAccessor(ctx, morphViewIdx, TINYGLTF_COMPONENT_TYPE_FLOAT,
+                                      vertsPerTarget, TINYGLTF_TYPE_VEC3,
+                                      {minDelta[0], minDelta[1], minDelta[2]},
+                                      {maxDelta[0], maxDelta[1], maxDelta[2]});
+
+        // Add morph target to the primitive
+        std::map<std::string, int> morphTarget;
+        morphTarget["POSITION"] = morphAccIdx;
+
+        // Add to the first primitive (Ni3dsMorphShape only has one primitive)
+        if (!mesh.primitives.empty()) {
+            mesh.primitives[0].targets.push_back(morphTarget);
+        }
+    }
+
+    // Set morph target names and initial weights
+    if (!mesh.primitives.empty()) {
+        mesh.weights = morphWeights;
+
+        // Store morph target names in mesh extras
+        Value morphExtras(Value::Object{});
+        Value namesArray(Value::Array{});
+        for (const auto& name : morphTargetNames) {
+            namesArray.Get<Value::Array>().push_back(Value(name));
+        }
+        morphExtras.Get<Value::Object>()["targetNames"] = namesArray;
+        mesh.extras = morphExtras;
+    }
+
+    qInfo(nsIo) << "Exported" << morphTargets.size() << "morph targets for mesh"
+                << QString::fromStdString(mesh.name);
+
+    // EXPORT ANIMATIONS: Create separate animation for each morph target
+    if (morphKeyCount > 0) {
+
+        // Process animation for each target as a separate animation
+        for (uint t = 0; t < targetCount; t++) {
+            ProcessMorphTargetAnimation(nif, iBlock, t, targetCount, morphTargetNames[t], ctx);
+        }
+
+    }
+}
+
 // Process mesh geometry
 int ProcessMesh(const NifModel* nif, const QModelIndex& iBlock, GLTF_ExportContext& ctx)
 {
@@ -342,7 +658,8 @@ int ProcessMesh(const NifModel* nif, const QModelIndex& iBlock, GLTF_ExportConte
     std::vector<unsigned char> indexData;
 
     // FIX: Initialize bounds with the FIRST TRANSFORMED vertex
-    auto firstVert = verts[0].toYUp() * NIF_TO_METERS;
+    auto firstVert = verts[0].toYUp();
+    firstVert *= NIF_TO_METERS;
     float minPos[3] = {
         static_cast<float>(firstVert[0]),
         static_cast<float>(firstVert[1]),
@@ -358,7 +675,7 @@ int ProcessMesh(const NifModel* nif, const QModelIndex& iBlock, GLTF_ExportConte
         auto vUp = v.toYUp();
 
         // Apply scale conversion: NIF units -> meters
-        vUp = vUp * NIF_TO_METERS;
+        vUp *= NIF_TO_METERS;
 
         // Track bounds (in meters) - NOW CORRECTLY COMPARING TRANSFORMED VALUES
         for (int i = 0; i < 3; i++) {
@@ -473,6 +790,11 @@ int ProcessMesh(const NifModel* nif, const QModelIndex& iBlock, GLTF_ExportConte
     int meshIdx = ctx.model.meshes.size();
     ctx.model.meshes.push_back(mesh);
     ctx.meshMap[nif->getBlockNumber(iBlock)] = meshIdx;
+
+    // MORPH TARGET SUPPORT: Process morph targets if this is a Ni3dsMorphShape
+    if (nif->isNiBlock(iBlock, "Ni3dsMorphShape")) {
+        ProcessMorphTargets(nif, iBlock, meshIdx, ctx);
+    }
 
     return meshIdx;
 }
@@ -870,6 +1192,35 @@ int ProcessCamera(const NifModel* nif, const QModelIndex& iBlock, GLTF_ExportCon
     return cameraIdx;
 }
 
+// Process billboards and add custom extension data
+void ProcessBillboards(GLTF_ExportContext& ctx)
+{
+    if (ctx.billboardNodes.empty() || ctx.cameraNodeIdx < 0) {
+        return;
+    }
+
+    // Add billboard constraint information to each billboard node
+    for (int nodeIdx : ctx.billboardNodes) {
+        if (nodeIdx >= 0 && nodeIdx < ctx.model.nodes.size()) {
+            Node& node = ctx.model.nodes[nodeIdx];
+
+            // Store billboard information in extras (JSON object)
+            // This allows Unity/other engines to implement billboard behavior
+            // Build the nested structure manually using Get() to access the map
+            Value billboardData(Value::Object{});
+            billboardData.Get<Value::Object>()["targetCamera"] = Value(ctx.cameraNodeIdx);
+            billboardData.Get<Value::Object>()["type"] = Value("screen_aligned");
+
+            Value extras(Value::Object{});
+            extras.Get<Value::Object>()["NifBillboard"] = billboardData;
+
+            node.extras = extras;
+
+            qInfo(nsIo) << "Marked node" << nodeIdx << "as billboard targeting camera node" << ctx.cameraNodeIdx;
+        }
+    }
+}
+
 // Process node hierarchy recursively
 int ProcessNode(const NifModel* nif, const QModelIndex& iBlock, int parentNodeIdx, GLTF_ExportContext& ctx)
 {
@@ -906,6 +1257,14 @@ int ProcessNode(const NifModel* nif, const QModelIndex& iBlock, int parentNodeId
     ctx.model.nodes.push_back(node);
     ctx.nodeMap[nif->getBlockNumber(iBlock)] = nodeIdx;
 
+    // BILLBOARD DETECTION: Track NiBillboardNode that aren't animated
+    // Only apply billboards to nodes which aren't animated (same logic as FBX export)
+    if (nif->isNiBlock(iBlock, "NiBillboardNode") &&
+        !nif->isNiBlock(iBlock, "Ni3dsAnimationNode")) {
+        ctx.billboardNodes.push_back(nodeIdx);
+        qInfo(nsIo) << "Detected billboard node:" << QString::fromStdString(blockName) << "(index" << nodeIdx << ")";
+    }
+
     // Link to parent
     if (parentNodeIdx >= 0) {
         ctx.model.nodes[parentNodeIdx].children.push_back(nodeIdx);
@@ -923,7 +1282,9 @@ int ProcessNode(const NifModel* nif, const QModelIndex& iBlock, int parentNodeId
         if (nif->isNiBlock(iChild, "NiNode") || nif->inherits(iChild, "NiNode")) {
             ProcessNode(nif, iChild, nodeIdx, ctx);
         }
-        else if (nif->inherits(iChild, "NiTriShape") || nif->itemName(iChild) == "NiTriShape") {
+        else if (nif->inherits(iChild, "NiTriShape")
+                 || nif->itemName(iChild) == "NiTriShape"
+                 || nif->isNiBlock(iChild, "Ni3dsMorphShape")) {  // ADD THIS LINE
             int meshIdx = ProcessMesh(nif, iChild, ctx);
             if (meshIdx >= 0) {
                 ctx.model.nodes[nodeIdx].mesh = meshIdx;
@@ -933,7 +1294,7 @@ int ProcessNode(const NifModel* nif, const QModelIndex& iBlock, int parentNodeId
             // Process camera and attach to this node
             int cameraIdx = ProcessCamera(nif, iChild, ctx);
             if (cameraIdx >= 0) {
-                // CRITICAL: Apply camera rotation adjustment for Y-up coordinate system
+                // Apply camera rotation adjustment for Y-up coordinate system
                 // NIF cameras look down +Y (forward), glTF cameras look down -Z
                 // Apply -90° rotation around X axis
 
@@ -947,8 +1308,11 @@ int ProcessNode(const NifModel* nif, const QModelIndex& iBlock, int parentNodeId
                     0.7071067811865476    // w = cos(-90°/2)
                 };
 
-                // CRITICAL FIX: Assign camera to node using the correct TinyGLTF field
+                // Assign camera to node
                 ctx.model.nodes[nodeIdx].camera = cameraIdx;
+
+                // Track camera node for billboard targeting
+                ctx.cameraNodeIdx = nodeIdx;
 
                 qInfo(nsIo) << "Attached camera index" << cameraIdx
                             << "to node" << nodeIdx;
@@ -978,11 +1342,9 @@ void exportGLTF(const NifModel* nif, const QModelIndex& index)
     GLTF_ExportContext ctx;
     ctx.exportPath = exportPath.toStdString();
 
-    // Setup glTF asset info
     ctx.model.asset.version = "2.0";
     ctx.model.asset.generator = "NifSkope glTF Exporter";
 
-    // Find root node
     QModelIndex iRoot = FindSceneRoot(nif, QModelIndex());
     if (!iRoot.isValid()) {
         auto links = nif->getRootLinks();
@@ -1000,10 +1362,10 @@ void exportGLTF(const NifModel* nif, const QModelIndex& index)
         return;
     }
 
-    // Process scene hierarchy
     int rootNodeIdx = ProcessNode(nif, iRoot, -1, ctx);
 
-    // Create default scene
+    ProcessBillboards(ctx);
+
     Scene scene;
     scene.name = "Scene";
     scene.nodes.push_back(rootNodeIdx);
@@ -1011,10 +1373,8 @@ void exportGLTF(const NifModel* nif, const QModelIndex& index)
     ctx.model.scenes.push_back(scene);
     ctx.model.defaultScene = 0;
 
-    // Determine output format
     bool binary = exportPath.endsWith(".glb", Qt::CaseInsensitive);
 
-    // For glTF JSON with external .bin file, set buffer URIs
     if (!binary && !ctx.model.buffers.empty()) {
         QFileInfo fileInfo(exportPath);
         QString binFileName = fileInfo.completeBaseName() + ".bin";
@@ -1025,10 +1385,8 @@ void exportGLTF(const NifModel* nif, const QModelIndex& index)
         }
     }
 
-    // Write file
     TinyGLTF writer;
 
-    // CRITICAL FIX: Set embedBuffers based on format
     // - GLB (binary): embedBuffers = true (embed in binary chunk)
     // - glTF JSON: embedBuffers = false (write external .bin file)
     bool embedBuffers = binary;  // Only embed for GLB format
@@ -1048,6 +1406,11 @@ void exportGLTF(const NifModel* nif, const QModelIndex& index)
         );
 
     if (success) {
+        // Report billboard export
+        if (!ctx.billboardNodes.empty()) {
+            qInfo(nsIo) << "Exported" << ctx.billboardNodes.size() << "billboard nodes";
+        }
+
         qInfo(nsIo) << "Successfully exported glTF to" << exportPath;
         if (!binary) {
             QFileInfo fileInfo(exportPath);

@@ -2253,11 +2253,6 @@
         <add name="Unknown 1" type="byte" arr1="184">Unknown.</add>
     </niobject>
 
-    <niobject name="Ni3dsMorphShape" abstract="0" inherit="NiObject">
-        Unknown!
-        <add name="Unknown 1" type="byte" arr1="14">Unknown.</add>
-    </niobject>
-
     <niobject name="NiParticleModifier" abstract="1" inherit="NiObject">
         LEGACY (pre-10.1). Abstract base class for particle system modifiers.
         <add name="Next Modifier" type="Ref" template="NiParticleModifier">Next particle modifier.</add>
@@ -4963,6 +4958,23 @@
         <add name="Triangles" type="Triangle" arr1="Num Triangles" cond="Has Triangles" ver1="10.0.1.3">Triangle face data.</add>
         <add name="Num Match Groups" type="ushort" ver1="3.1">Number of shared normals groups.</add>
         <add name="Match Groups" type="MatchGroup" arr1="Num Match Groups" ver1="3.1">The shared normals.</add>
+    </niobject>
+    
+    <niobject name="Ni3dsMorphShape" abstract="0" inherit="NiTriShape">
+        <add name="Core" type="Ni3dsAnimationCore">Animation Core</add>
+        <add name="Unknown" type="byte" />
+        <add name="Update Normals" type="byte" />
+        <add name="Target Count" type="uint" />
+        <add name="Morph Key Count" type="uint" />
+        <add name="Bound" type="NiBound">The bounding volume.</add>
+        <add name="Morph Key Type" type="ScaleKeyType" default="0" cond="Morph Key Count > 0" />
+        <add name="Morph Keys" type="NiLinFloatKey" arr1="Morph Key Count" cond="Morph Key Type == 1" />
+        <add name="Morph Keys" type="NiBezFloatKey" arr1="Morph Key Count" cond="Morph Key Type == 2" />
+        <add name="Morph Keys" type="NiTCBFloatKey" arr1="Morph Key Count" cond="Morph Key Type == 3" />
+        <add name="Morph Keys" type="NiMorphKey" arr1="Morph Key Count" cond="Morph Key Type == 4" />
+        <add name="Morph Keys" type="NiBaryMorphKey" arr1="Morph Key Count" cond="Morph Key Type == 5" />
+        <add name="Morph Keys" type="NiCubicMorphKey" arr1="Morph Key Count" cond="Morph Key Type == 6" />
+        <add name="Target Vertices" type="Vector3" arr1="Num Vertices * Target Count" cond="Target Count > 0" />
     </niobject>
     
     <compound name="SkinVertexInstance">
