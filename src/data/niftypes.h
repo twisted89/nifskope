@@ -860,6 +860,8 @@ public:
 	//! Spherical linear interpolatation between two quaternions
 	static Quat slerp ( float t, const Quat & p, const Quat & q );
 
+
+
 	//! Format as HTML
 	QString toHtml() const
 	{
@@ -927,6 +929,17 @@ public:
 			m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]
 		);
 	}
+
+	//! Times operator for an Eigen vector
+	Eigen::Vector3d operator*(const Eigen::Vector3d& v) const
+	{
+		return Eigen::Vector3d(
+			m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+			m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+			m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]
+		);
+	}
+
 	//! %Element operator
 	float & operator()( unsigned int c, unsigned int d )
 	{
@@ -1065,6 +1078,14 @@ public:
 
 	Matrix4 inverted() const;
 
+	void fromQuat(const Quat& q);
+	//! Convert to quaternion  
+	Quat toQuat() const;
+	//! Set translation
+	void translate(const Vector3& t);
+	//! Set scale
+	void scale(float s);
+
 	//! Format as HTML
 	QString toHtml() const;
 
@@ -1117,8 +1138,14 @@ public:
         return t;
     }
 
-	//! Returns a matrix holding the transform
-	Matrix4 toMatrix4() const;
+    //! Returns a matrix holding the transform
+    Matrix4 toMatrix4() const;
+
+	//! Returns an Eigen matrix holding the transform
+	Eigen::Matrix4f toMatrix() const;
+
+    //! Returns the inverse of this transform
+    Transform inverse() const;
 
 	// Format of rotation matrix? See http://en.wikipedia.org/wiki/Euler_angles
 	// fromEuler indicates that it might be "zyx" form

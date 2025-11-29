@@ -575,6 +575,65 @@ Matrix4 Matrix4::inverted() const
 	return inv;
 }
 
+void Matrix4::fromQuat(const Quat& q)
+{
+	// Initialize as identity matrix
+	*this = Matrix4();
+
+	// Convert quaternion to rotation matrix (3x3 portion)
+	float fTx = ((float)2.0) * q[1];
+	float fTy = ((float)2.0) * q[2];
+	float fTz = ((float)2.0) * q[3];
+	float fTwx = fTx * q[0];
+	float fTwy = fTy * q[0];
+	float fTwz = fTz * q[0];
+	float fTxx = fTx * q[1];
+	float fTxy = fTy * q[1];
+	float fTxz = fTz * q[1];
+	float fTyy = fTy * q[2];
+	float fTyz = fTz * q[2];
+	float fTzz = fTz * q[3];
+
+	m[0][0] = (float)1.0 - (fTyy + fTzz);
+	m[0][1] = fTxy - fTwz;
+	m[0][2] = fTxz + fTwy;
+	m[1][0] = fTxy + fTwz;
+	m[1][1] = (float)1.0 - (fTxx + fTzz);
+	m[1][2] = fTyz - fTwx;
+	m[2][0] = fTxz - fTwy;
+	m[2][1] = fTyz + fTwx;
+	m[2][2] = (float)1.0 - (fTxx + fTyy);
+}
+
+Quat Matrix4::toQuat() const
+{
+	// Extract 3x3 rotation matrix and convert to quaternion
+	Matrix rotMatrix;
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			rotMatrix(i, j) = m[i][j];
+		}
+	}
+	return rotMatrix.toQuat();
+}
+
+void Matrix4::translate(const Vector3& t)
+{
+	m[0][3] += t[0];
+	m[1][3] += t[1];
+	m[2][3] += t[2];
+}
+
+void Matrix4::scale(float s)
+{
+	// Scale the 3x3 rotation/scale portion
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			m[i][j] *= s;
+		}
+	}
+}
+
 void Quat::fromAxisAngle( Vector3 axis, float angle )
 {
 	axis.normalize();
@@ -767,5 +826,44 @@ Matrix4 Transform::toMatrix4() const
 	m( 2, 3 ) = 0.0;
 	m( 3, 3 ) = 1.0;
 	return m;
+}
+
+Eigen::Matrix4f Transform::toMatrix() const
+{
+	Eigen::Matrix4f m = Eigen::Matrix4f::Identity();
+
+	// Convert rotation matrix
+	for (int i = 0; i < 3; ++i) {
+		for (int j = 0; j < 3; ++j) {
+			m(i, j) = rotation(i, j);
+		}
+	}
+
+	// Apply scale
+	m.block<3, 3>(0, 0) *= scale;
+
+	// Set translation
+	m(0, 3) = translation[0];
+	m(1, 3) = translation[1];
+	m(2, 3) = translation[2];
+
+	return m;
+}
+
+Transform Transform::inverse() const
+{
+    Transform inv;
+
+    // Invert scale
+    float invScale = (scale != 0.0f) ? (1.0f / scale) : 1.0f;
+    inv.scale = invScale;
+
+    // Invert rotation (transpose for orthogonal matrix)
+    inv.rotation = rotation.inverted();
+
+    // Invert translation: T^-1 = -R^-1 * T * (1/S)
+    inv.translation = inv.rotation * (translation * -invScale);
+
+    return inv;
 }
 
